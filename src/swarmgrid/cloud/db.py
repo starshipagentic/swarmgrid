@@ -102,8 +102,9 @@ class Board(Base):
     jira_board_id = Column(String(50), default="")
     created_by = Column(Integer, ForeignKey("users.id"), nullable=False)
     created_at = Column(DateTime, default=utc_now)
-    # Encrypted Jira cred blob — cloud CANNOT decrypt this
-    encrypted_jira_cred = Column(Text, default="")
+    # Jira credentials (base64 for now — will be encrypted in production)
+    jira_email = Column(String(255), default="")
+    jira_token = Column(Text, default="")
 
     team = relationship("Team", back_populates="boards")
     routes = relationship("Route", back_populates="board", cascade="all, delete-orphan")

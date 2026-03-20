@@ -11,3 +11,4 @@ board-routes.yaml
 boards/
 *.jira-map.yaml
 dist/
+.env

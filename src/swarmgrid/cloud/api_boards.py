@@ -2,9 +2,13 @@
 from __future__ import annotations
 
 import json
+import logging
 
+import httpx
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
+
+logger = logging.getLogger(__name__)
 
 from .auth import get_current_user
 from .db import Board, Route, SessionLocal, Team, TeamMember, User, AgentSession
@@ -146,6 +150,8 @@ def create_board(body: BoardCreate, user: User = Depends(get_current_user)):
             site_url=body.site_url,
             project_key=body.project_key,
             jira_board_id=jira_board_id,
+            jira_email=body.jira_email,
+            jira_token=body.jira_token,
             created_by=user.id,
         )
         db.add(board)
@@ -196,8 +202,8 @@ def delete_board(board_id: int, user: User = Depends(get_current_user)):
 
 
 @router.get("/{board_id}/snapshot")
-def board_snapshot(board_id: int, user: User = Depends(get_current_user)):
-    """Return board state in the same shape as the existing /api/snapshot."""
+async def board_snapshot(board_id: int, user: User = Depends(get_current_user)):
+    """Return board state — fetches live data from Jira if credentials available."""
     _require_board_access(board_id, user)
     db = SessionLocal()
     try:
@@ -211,22 +217,40 @@ def board_snapshot(board_id: int, user: User = Depends(get_current_user)):
             .all()
         )
 
-        # Build columns from routes (same shape as existing webapp)
+        # Try to fetch live Jira data if credentials are available
+        jira_columns = []
+        jira_issues = []
+        if board.jira_email and board.jira_token and board.jira_board_id:
+            try:
+                jira_columns, jira_issues = await _fetch_jira_board(board)
+            except Exception as e:
+                logger.warning("Jira fetch failed for board %s: %s", board_id, e)
+
+        # Build columns: use Jira columns if available, otherwise from routes
         columns = []
-        for route in routes:
-            col_sessions = [s for s in sessions if s.state in ("running", "launching") and _status_matches(s, route)]
-            columns.append({
-                "status": route.status,
-                "tickets": [
-                    {
-                        "key": s.ticket_key,
-                        "summary": s.ticket_summary,
-                        "state": s.state,
-                        "session_id": s.session_id,
-                    }
-                    for s in col_sessions
-                ],
-            })
+        if jira_columns:
+            for col in jira_columns:
+                col_name = col.get("name", "")
+                col_issues = [i for i in jira_issues if i.get("status") == col_name]
+                route = next((r for r in routes if r.status == col_name), None)
+                columns.append({
+                    "status": col_name,
+                    "count": len(col_issues),
+                    "armed": route.enabled if route else False,
+                    "tickets": [
+                        {
+                            "key": i["key"],
+                            "summary": i.get("summary", ""),
+                            "status_name": i.get("status", ""),
+                            "assignee": i.get("assignee"),
+                            "issue_type": i.get("issue_type", ""),
+                        }
+                        for i in col_issues
+                    ],
+                })
+        else:
+            for route in routes:
+                columns.append({"status": route.status, "count": 0, "armed": route.enabled, "tickets": []})
 
         return {
             "board": _board_to_dict(board),
@@ -245,6 +269,84 @@ def board_snapshot(board_id: int, user: User = Depends(get_current_user)):
         }
     finally:
         db.close()
+
+
+async def _fetch_jira_board(board: Board) -> tuple[list, list]:
+    """Fetch board columns and issues from Jira API."""
+    auth = (board.jira_email, board.jira_token)
+    base = board.site_url.rstrip("/")
+
+    async with httpx.AsyncClient(timeout=15) as client:
+        # Fetch board columns
+        config_resp = await client.get(
+            f"{base}/rest/agile/1.0/board/{board.jira_board_id}/configuration",
+            auth=auth,
+        )
+        config_resp.raise_for_status()
+        config_data = config_resp.json()
+        raw_columns = config_data.get("columnConfig", {}).get("columns", [])
+
+        # Get status name mapping
+        status_map = {}
+        try:
+            status_resp = await client.get(
+                f"{base}/rest/api/3/project/{board.project_key}/statuses",
+                auth=auth,
+            )
+            if status_resp.is_success:
+                for block in status_resp.json():
+                    for s in block.get("statuses", []):
+                        sid = str(s.get("id", ""))
+                        sname = s.get("name", "")
+                        if sid and sname:
+                            status_map[sid] = sname
+        except Exception:
+            pass
+
+        columns = []
+        all_status_names = set()
+        for col in raw_columns:
+            col_name = col.get("name", "")
+            statuses = []
+            for st in col.get("statuses", []):
+                sid = str(st.get("id", ""))
+                sname = status_map.get(sid, sid)
+                statuses.append(sname)
+                all_status_names.add(sname)
+            columns.append({"name": col_name, "statuses": statuses})
+
+        # Fetch issues on the board
+        issues = []
+        if all_status_names:
+            quoted = ", ".join(f'"{s}"' for s in all_status_names)
+            jql = f"project = {board.project_key} AND status IN ({quoted}) ORDER BY updated DESC"
+            search_resp = await client.post(
+                f"{base}/rest/api/3/search/jql",
+                auth=auth,
+                json={"jql": jql, "fields": ["summary", "status", "assignee", "issuetype"], "maxResults": 50},
+            )
+            if search_resp.is_success:
+                for item in search_resp.json().get("issues", []):
+                    fields = item.get("fields", {})
+                    assignee = fields.get("assignee")
+                    issues.append({
+                        "key": item["key"],
+                        "summary": fields.get("summary", ""),
+                        "status": fields.get("status", {}).get("name", ""),
+                        "assignee": assignee.get("displayName") if assignee else None,
+                        "issue_type": fields.get("issuetype", {}).get("name", ""),
+                    })
+
+        # Map issues to columns by status name
+        flat_columns = []
+        for col in columns:
+            flat_columns.append({
+                "name": col["name"],
+                "statuses": col["statuses"],
+            })
+
+        # Return columns with their status names, and all issues with their status
+        return flat_columns, issues
 
 
 def _status_matches(session: AgentSession, route: Route) -> bool:
