@@ -10,3 +10,4 @@ src/swarmgrid.egg-info/
 board-routes.yaml
 boards/
 *.jira-map.yaml
+dist/
