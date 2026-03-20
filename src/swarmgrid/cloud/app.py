@@ -58,33 +58,24 @@ app.include_router(ws.router)
 # ── Auth endpoints ─────────────────────────────────────────────────────
 
 FRONTEND_URL = os.environ.get("FRONTEND_URL", "https://swarmgrid.org")
+OAUTH_CALLBACK_URL = os.environ.get("OAUTH_CALLBACK_URL", "https://swarmgrid-api.fly.dev/api/auth/github/callback")
 
 
 @app.get("/api/auth/github")
 @app.get("/auth/login")
 def login(request: Request):
     """Redirect to GitHub OAuth authorization page."""
-    callback_url = str(request.base_url) + "auth/callback"
-    return RedirectResponse(github_login_url(callback_url))
+    return RedirectResponse(github_login_url(OAUTH_CALLBACK_URL))
 
 
 @app.get("/auth/callback", name="auth_callback")
 @app.get("/api/auth/github/callback")
 async def callback(code: str):
-    """GitHub OAuth callback — exchanges code for user info, sets cookie, redirects to dashboard."""
+    """GitHub OAuth callback — exchanges code for user info, redirects to dashboard with token in URL."""
     gh = await github_callback(code)
     user = upsert_user(gh)
     token = create_jwt(user)
-    response = RedirectResponse(f"{FRONTEND_URL}/dashboard.html", status_code=302)
-    response.set_cookie(
-        key="swarmgrid_token",
-        value=token,
-        httponly=False,  # JS needs to read it for API calls
-        secure=True,
-        samesite="lax",
-        max_age=72 * 3600,
-    )
-    return response
+    return RedirectResponse(f"{FRONTEND_URL}/dashboard.html?token={token}", status_code=302)
 
 
 @app.get("/api/auth/me")

@@ -54,7 +54,7 @@ class User(Base):
     created_at = Column(DateTime, default=utc_now)
     last_login_at = Column(DateTime, default=utc_now)
 
-    memberships = relationship("TeamMember", back_populates="user")
+    memberships = relationship("TeamMember", back_populates="user", foreign_keys="[TeamMember.user_id]")
     edge_nodes = relationship("EdgeNode", back_populates="owner")
 
 
