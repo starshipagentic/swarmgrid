@@ -216,7 +216,7 @@ def test_config_load_succeeds():
     """Primary config loads without error."""
     from swarmgrid.config import load_config
     config = load_config("board-routes.yaml")
-    assert config.project_key == "LMSV3"
+    assert config.project_key == "PROJ"
 
 
 def test_config_route_settings_have_new_fields():

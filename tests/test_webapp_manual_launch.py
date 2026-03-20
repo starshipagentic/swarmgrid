@@ -23,13 +23,13 @@ class DummyJira:
         return None
 
 
-def make_config(*, status: str = "Droid-Do", route_enabled: bool = False) -> AppConfig:
+def make_config(*, status: str = "Todo", route_enabled: bool = False) -> AppConfig:
     return AppConfig(
         config_path=Path("board-routes.yaml"),
         site_url="https://example.atlassian.net",
-        project_key="LMSV3",
+        project_key="PROJ",
         board_id="1183",
-        board_map_path=Path("LearnV3.jira-map.yaml"),
+        board_map_path=Path("project.jira-map.yaml"),
         operator_settings_path=Path("operator-settings.yaml"),
         poll_interval_minutes=5,
         local_state_dir=Path("var/heartbeat"),
@@ -62,7 +62,7 @@ def make_config(*, status: str = "Droid-Do", route_enabled: bool = False) -> App
     )
 
 
-def make_issue(*, key: str = "LMSV3-123", status: str = "Droid-Do") -> JiraIssue:
+def make_issue(*, key: str = "PROJ-123", status: str = "Todo") -> JiraIssue:
     return JiraIssue(
         key=key,
         summary="Fix search launch",
@@ -96,7 +96,7 @@ def make_launch(issue: JiraIssue, action: str) -> LaunchRecord:
 
 def test_manual_launch_uses_route_for_trigger_status(monkeypatch):
     config = make_config(route_enabled=False)
-    issue = make_issue(status="Droid-Do")
+    issue = make_issue(status="Todo")
     store = DummyStore()
     launch = make_launch(issue, "claude_solve2")
     calls: list[str] = []

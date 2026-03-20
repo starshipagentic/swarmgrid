@@ -220,7 +220,7 @@ if [[ -z "$SITE_URL" || -z "$PROJECT_KEY" || -z "$BOARD_ID" ]]; then
     read -rp "→ Jira site URL (e.g. https://yoursite.atlassian.net): " SITE_URL
   fi
   if [[ -z "$PROJECT_KEY" ]]; then
-    read -rp "→ Project key (e.g. LMSV3): " PROJECT_KEY
+    read -rp "→ Project key (e.g. PROJ): " PROJECT_KEY
   fi
   if [[ -z "$BOARD_ID" ]]; then
     read -rp "→ Board ID (the number in the URL): " BOARD_ID

@@ -87,14 +87,14 @@ check "returns pong" "$result" 'd.get("pong") == True'
 # Test 2: checkin with simple keys
 echo ""
 echo "Test 2: checkin (simple keys)"
-result=$(send_cmd '{"cmd":"checkin","dev_id":"travis","tickets":["LMSV3-100","LMSV3-101"]}')
+result=$(send_cmd '{"cmd":"checkin","dev_id":"travis","tickets":["PROJ-100","PROJ-101"]}')
 check "returns ok" "$result" 'd.get("ok") == True'
 check "checked_in == 2" "$result" 'd.get("checked_in") == 2'
 
 # Test 3: checkin with rich objects
 echo ""
 echo "Test 3: checkin (rich objects)"
-result=$(send_cmd '{"cmd":"checkin","dev_id":"karthik","tickets":[{"key":"LMSV3-200","summary":"Fix auth","status":"In Progress"}]}')
+result=$(send_cmd '{"cmd":"checkin","dev_id":"karthik","tickets":[{"key":"PROJ-200","summary":"Fix auth","status":"In Progress"}]}')
 check "returns ok" "$result" 'd.get("ok") == True'
 check "checked_in == 1" "$result" 'd.get("checked_in") == 1'
 
