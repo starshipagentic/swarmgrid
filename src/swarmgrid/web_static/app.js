@@ -1725,7 +1725,7 @@ async function renderSetupForm() {
       <div>${field("poll_interval_minutes", "Heartbeat minutes", setup.poll_interval_minutes, "How often to poll Jira for new tickets in trigger columns")}</div>
       <div>${field("site_url", "Site URL", setup.site_url, "Your Atlassian site (e.g. https://yoursite.atlassian.net)")}</div>
       <div>${field("project_key", "Project key", setup.project_key, "Jira project key (e.g. PROJ, MYAPP)")}</div>
-      <div>${field("board_id", "Board ID", setup.board_id, "The board number from your Jira board URL (e.g. 1183)")}</div>
+      <div>${field("board_id", "Board ID", setup.board_id, "The board number from your Jira board URL (e.g. 123)")}</div>
     </div>
     <div class="setup-actions">
       <button type="submit">Save Setup</button>

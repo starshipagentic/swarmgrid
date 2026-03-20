@@ -28,7 +28,7 @@ def make_config(*, status: str = "Todo", route_enabled: bool = False) -> AppConf
         config_path=Path("board-routes.yaml"),
         site_url="https://example.atlassian.net",
         project_key="PROJ",
-        board_id="1183",
+        board_id="42",
         board_map_path=Path("project.jira-map.yaml"),
         operator_settings_path=Path("operator-settings.yaml"),
         poll_interval_minutes=5,
