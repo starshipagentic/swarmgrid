@@ -11,10 +11,12 @@ Environment variables:
     JWT_EXPIRY_HOURS      — Token expiry (default: 72)
 """
 from __future__ import annotations
+import os
+
 
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, RedirectResponse
 
@@ -55,28 +57,63 @@ app.include_router(ws.router)
 
 # ── Auth endpoints ─────────────────────────────────────────────────────
 
+FRONTEND_URL = os.environ.get("FRONTEND_URL", "https://swarmgrid.org")
+
+
+@app.get("/api/auth/github")
 @app.get("/auth/login")
 def login(request: Request):
     """Redirect to GitHub OAuth authorization page."""
-    redirect_uri = str(request.url_for("auth_callback"))
-    return RedirectResponse(github_login_url(redirect_uri))
+    callback_url = str(request.base_url) + "auth/callback"
+    return RedirectResponse(github_login_url(callback_url))
 
 
 @app.get("/auth/callback", name="auth_callback")
+@app.get("/api/auth/github/callback")
 async def callback(code: str):
-    """GitHub OAuth callback — exchanges code for user info, creates JWT."""
+    """GitHub OAuth callback — exchanges code for user info, sets cookie, redirects to dashboard."""
     gh = await github_callback(code)
     user = upsert_user(gh)
     token = create_jwt(user)
-    return {
-        "token": token,
-        "user": {
+    response = RedirectResponse(f"{FRONTEND_URL}/dashboard.html", status_code=302)
+    response.set_cookie(
+        key="swarmgrid_token",
+        value=token,
+        httponly=False,  # JS needs to read it for API calls
+        secure=True,
+        samesite="lax",
+        max_age=72 * 3600,
+    )
+    return response
+
+
+@app.get("/api/auth/me")
+async def me(request: Request):
+    """Return current user from JWT cookie or header."""
+    token = request.cookies.get("swarmgrid_token")
+    if not token:
+        auth = request.headers.get("Authorization", "")
+        if auth.startswith("Bearer "):
+            token = auth[7:]
+    if not token:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    from .auth import decode_jwt
+    claims = decode_jwt(token)
+    user_id = int(claims["sub"])
+    from .db import SessionLocal, User
+    db = SessionLocal()
+    try:
+        user = db.query(User).filter(User.id == user_id).first()
+        if not user:
+            raise HTTPException(status_code=401, detail="User not found")
+        return {
             "id": user.id,
             "github_login": user.github_login,
             "display_name": user.display_name,
             "avatar_url": user.avatar_url,
-        },
-    }
+        }
+    finally:
+        db.close()
 
 
 # ── Health ─────────────────────────────────────────────────────────────
