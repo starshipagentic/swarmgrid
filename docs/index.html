@@ -1,0 +1,322 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>SwarmGrid — AI Agent Swarm Orchestrator</title>
+  <meta name="description" content="Orchestrate AI agent swarms for your kanban board. Poll tickets, launch Claude agents, watch them work, share sessions with your team.">
+  <style>
+    :root {
+      --bg: #0c1116;
+      --panel: #1a2128;
+      --text: #e7edf3;
+      --muted: #9fb2c7;
+      --accent: #9fd3c7;
+      --green: #7fe08a;
+      --orange: #f0bc63;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.6;
+    }
+    .container { max-width: 960px; margin: 0 auto; padding: 0 24px; }
+
+    /* Hero */
+    .hero {
+      padding: 100px 0 80px;
+      text-align: center;
+    }
+    .hero h1 {
+      font-family: Menlo, Monaco, Consolas, monospace;
+      font-size: 64px;
+      font-weight: 700;
+      color: var(--accent);
+      margin-bottom: 16px;
+    }
+    .hero .tagline {
+      font-size: 24px;
+      color: var(--text);
+      margin-bottom: 12px;
+    }
+    .hero .sub {
+      font-size: 18px;
+      color: var(--muted);
+      max-width: 600px;
+      margin: 0 auto 40px;
+    }
+    .hero .cta {
+      display: inline-flex;
+      gap: 16px;
+      flex-wrap: wrap;
+      justify-content: center;
+    }
+    .btn {
+      display: inline-block;
+      padding: 14px 32px;
+      border-radius: 10px;
+      font-size: 16px;
+      font-weight: 600;
+      text-decoration: none;
+      transition: opacity 0.2s;
+    }
+    .btn:hover { opacity: 0.85; }
+    .btn-primary {
+      background: var(--accent);
+      color: var(--bg);
+    }
+    .btn-secondary {
+      background: transparent;
+      color: var(--accent);
+      border: 2px solid var(--accent);
+    }
+
+    /* Install */
+    .install {
+      text-align: center;
+      padding: 40px 0;
+    }
+    .install code {
+      display: inline-block;
+      background: var(--panel);
+      border: 1px solid #334150;
+      border-radius: 10px;
+      padding: 16px 32px;
+      font-family: Menlo, Monaco, Consolas, monospace;
+      font-size: 18px;
+      color: var(--green);
+      user-select: all;
+    }
+    .install .alt {
+      margin-top: 12px;
+      font-size: 14px;
+      color: var(--muted);
+    }
+    .install .alt code {
+      padding: 4px 10px;
+      font-size: 14px;
+      border-radius: 6px;
+    }
+
+    /* Progression */
+    .progression {
+      padding: 80px 0;
+    }
+    .progression h2 {
+      font-size: 36px;
+      font-weight: 700;
+      color: var(--accent);
+      text-align: center;
+      margin-bottom: 48px;
+    }
+    .levels {
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+      max-width: 700px;
+      margin: 0 auto;
+    }
+    .level {
+      display: flex;
+      align-items: center;
+      gap: 20px;
+      padding: 20px 28px;
+      background: var(--panel);
+      border-radius: 12px;
+      border-left: 4px solid var(--muted);
+    }
+    .level:nth-child(1) { border-color: var(--muted); }
+    .level:nth-child(2) { border-color: #78aeea; }
+    .level:nth-child(3) { border-color: var(--orange); }
+    .level:nth-child(4) { border-color: var(--green); }
+    .level .num {
+      font-family: Menlo, monospace;
+      font-size: 32px;
+      font-weight: 700;
+      min-width: 40px;
+    }
+    .level:nth-child(1) .num { color: var(--muted); }
+    .level:nth-child(2) .num { color: #78aeea; }
+    .level:nth-child(3) .num { color: var(--orange); }
+    .level:nth-child(4) .num { color: var(--green); }
+    .level .label { font-size: 20px; }
+    .level .desc { font-size: 15px; color: var(--muted); margin-top: 4px; }
+
+    /* Features */
+    .features {
+      padding: 80px 0;
+    }
+    .features h2 {
+      font-size: 36px;
+      font-weight: 700;
+      color: var(--accent);
+      text-align: center;
+      margin-bottom: 48px;
+    }
+    .feature-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 20px;
+    }
+    .feature {
+      background: var(--panel);
+      border-radius: 12px;
+      padding: 28px;
+      border-top: 3px solid var(--accent);
+    }
+    .feature h3 {
+      font-size: 20px;
+      color: var(--accent);
+      margin-bottom: 8px;
+    }
+    .feature p {
+      font-size: 15px;
+      color: var(--muted);
+      line-height: 1.7;
+    }
+
+    /* Stack */
+    .stack {
+      padding: 60px 0;
+      text-align: center;
+    }
+    .stack .tags {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+      justify-content: center;
+      margin-top: 20px;
+    }
+    .stack .tag {
+      padding: 8px 18px;
+      border-radius: 999px;
+      border: 1px solid #334150;
+      font-size: 14px;
+      color: var(--muted);
+      background: rgba(255,255,255,0.02);
+    }
+
+    /* Footer */
+    .footer {
+      padding: 60px 0 40px;
+      text-align: center;
+      border-top: 1px solid #334150;
+      margin-top: 40px;
+    }
+    .footer p { color: var(--muted); font-size: 14px; margin-bottom: 8px; }
+    .footer a { color: var(--accent); text-decoration: none; }
+    .footer a:hover { text-decoration: underline; }
+
+    @media (max-width: 700px) {
+      .hero h1 { font-size: 40px; }
+      .feature-grid { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+
+  <div class="container">
+    <section class="hero">
+      <h1>SwarmGrid</h1>
+      <div class="tagline">AI agent swarm orchestrator for kanban boards</div>
+      <div class="sub">
+        Poll your board. Launch Claude agents in tmux. Watch them work.
+        Share sessions with your team. Scale from one agent to a swarm.
+      </div>
+      <div class="cta">
+        <a href="https://github.com/starshipagentic/swarmgrid" class="btn btn-primary">GitHub</a>
+        <a href="https://pypi.org/project/swarmgrid/" class="btn btn-secondary">PyPI</a>
+      </div>
+    </section>
+
+    <section class="install">
+      <code>pip install swarmgrid</code>
+      <div class="alt">or: <code>git clone https://github.com/starshipagentic/swarmgrid.git && cd swarmgrid && ./setup.sh</code></div>
+    </section>
+
+    <section class="progression">
+      <h2>The Progression</h2>
+      <div class="levels">
+        <div class="level">
+          <div class="num">1</div>
+          <div>
+            <div class="label">One agent solving a ticket</div>
+            <div class="desc">Drag a ticket to a trigger column. Claude picks it up and starts working.</div>
+          </div>
+        </div>
+        <div class="level">
+          <div class="num">2</div>
+          <div>
+            <div class="label">A team of agents</div>
+            <div class="desc">Claude Opus 4.6 as team lead, coordinating specialised workers in parallel.</div>
+          </div>
+        </div>
+        <div class="level">
+          <div class="num">3</div>
+          <div>
+            <div class="label">A squad of engineers</div>
+            <div class="desc">Each dev running their own constellation of agents. All visible in one Team view.</div>
+          </div>
+        </div>
+        <div class="level">
+          <div class="num">4</div>
+          <div>
+            <div class="label">A swarm across your org</div>
+            <div class="desc">Multiple boards, multiple squads, one dashboard. Switch with a dropdown.</div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="features">
+      <h2>What it does</h2>
+      <div class="feature-grid">
+        <div class="feature">
+          <h3>Heartbeat</h3>
+          <p>Polls your kanban board every few minutes. When a ticket enters a trigger column, an agent launches automatically.</p>
+        </div>
+        <div class="feature">
+          <h3>Routes</h3>
+          <p>Map board columns to agentic slash commands. /solve for bugs, /migrate for DB changes, /prd2epic for planning. Configure from the UI.</p>
+        </div>
+        <div class="feature">
+          <h3>Live Dashboard</h3>
+          <p>Web UI with live board, terminal output streamed to your browser, session controls. Watch Claude work in real time.</p>
+        </div>
+        <div class="feature">
+          <h3>Session Sharing</h3>
+          <p>Share any tmux session with a teammate over SSH via upterm. One click, one link. Works across NAT, VPN, anywhere.</p>
+        </div>
+        <div class="feature">
+          <h3>Team Visibility</h3>
+          <p>See every ticket that went through the pipeline. Who has what, what status, when it moved. No standup needed.</p>
+        </div>
+        <div class="feature">
+          <h3>Zero Infrastructure</h3>
+          <p>No cloud. No Docker. No servers. Runs on your laptop with tmux, SSH, and SQLite. Just type <code>swarmgrid</code>.</p>
+        </div>
+      </div>
+    </section>
+
+    <section class="stack">
+      <h2>The Stack</h2>
+      <div class="tags">
+        <span class="tag">Python + FastAPI</span>
+        <span class="tag">tmux</span>
+        <span class="tag">Claude CLI</span>
+        <span class="tag">upterm</span>
+        <span class="tag">SQLite</span>
+        <span class="tag">Jira API</span>
+      </div>
+    </section>
+
+    <footer class="footer">
+      <p><a href="https://github.com/starshipagentic/swarmgrid">GitHub</a> · <a href="https://pypi.org/project/swarmgrid/">PyPI</a></p>
+      <p>MIT License</p>
+    </footer>
+  </div>
+
+</body>
+</html>
