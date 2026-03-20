@@ -4,6 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Dashboard — SwarmGrid</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/driver.js@1.3.1/dist/driver.css">
   <style>
     :root {
       --bg: #0c1116;
@@ -481,6 +482,18 @@
       font-size: 14px;
     }
     .empty-state p { margin-bottom: 8px; }
+
+    /* Driver.js dark theme overrides */
+    .driver-popover {
+      background: #1a2128;
+      color: #e7edf3;
+      border: 1px solid #334150;
+    }
+    .driver-popover .driver-popover-title { color: #9fd3c7; }
+    .driver-popover .driver-popover-description { color: #9fb2c7; }
+    .driver-popover-progress-text { color: #9fb2c7; }
+    .driver-popover .driver-popover-next-btn { background: #9fd3c7; color: #0c1116; }
+    .driver-popover .driver-popover-prev-btn { color: #9fb2c7; }
   </style>
 </head>
 <body>
@@ -491,7 +504,7 @@
         <h1>SwarmGrid</h1>
         <span class="headline" id="headline">Dashboard</span>
         <select class="board-switcher" id="board-switcher">
-          <option>Loading boards...</option>
+          <option value="">Loading boards...</option>
         </select>
       </div>
       <nav class="page-nav" id="page-nav">
@@ -513,63 +526,7 @@
         <h2>Board</h2>
         <p>Live ticket board with agent status indicators.</p>
       </div>
-      <div class="columns" id="columns">
-        <div class="column">
-          <div class="column-title">Backlog <span class="column-count">3</span></div>
-          <div class="ticket-card">
-            <div class="ticket-key">GRID-201</div>
-            <div class="ticket-summary">Add rate limiting to API endpoints</div>
-          </div>
-          <div class="ticket-card">
-            <div class="ticket-key">GRID-198</div>
-            <div class="ticket-summary">Update dependency versions</div>
-          </div>
-          <div class="ticket-card">
-            <div class="ticket-key">GRID-195</div>
-            <div class="ticket-summary">Write migration guide for v2</div>
-          </div>
-        </div>
-        <div class="column">
-          <div class="column-title">Ready <span class="column-count">2</span></div>
-          <div class="ticket-card">
-            <div class="ticket-key"><span class="status-dot status-idle"></span>GRID-190</div>
-            <div class="ticket-summary">Fix OAuth callback race condition</div>
-          </div>
-          <div class="ticket-card">
-            <div class="ticket-key"><span class="status-dot status-idle"></span>GRID-188</div>
-            <div class="ticket-summary">Implement team invite flow</div>
-          </div>
-        </div>
-        <div class="column">
-          <div class="column-title">In Progress <span class="column-count">2</span></div>
-          <div class="ticket-card">
-            <div class="ticket-key"><span class="status-dot status-active"></span>GRID-185</div>
-            <div class="ticket-summary">Build WebSocket relay for terminal streaming</div>
-          </div>
-          <div class="ticket-card">
-            <div class="ticket-key"><span class="status-dot status-active"></span>GRID-183</div>
-            <div class="ticket-summary">Edge node heartbeat registration</div>
-          </div>
-        </div>
-        <div class="column">
-          <div class="column-title">Review <span class="column-count">1</span></div>
-          <div class="ticket-card">
-            <div class="ticket-key">GRID-180</div>
-            <div class="ticket-summary">Template library CRUD endpoints</div>
-          </div>
-        </div>
-        <div class="column">
-          <div class="column-title">Done <span class="column-count">2</span></div>
-          <div class="ticket-card">
-            <div class="ticket-key">GRID-175</div>
-            <div class="ticket-summary">GitHub OAuth integration</div>
-          </div>
-          <div class="ticket-card">
-            <div class="ticket-key">GRID-172</div>
-            <div class="ticket-summary">Database schema and migrations</div>
-          </div>
-        </div>
-      </div>
+      <div id="board-content"><div class="spinner"></div></div>
     </main>
 
     <!-- Routes View -->
@@ -578,37 +535,7 @@
         <h2>Routes</h2>
         <p>Arm trigger stages and map columns to agentic slash commands.</p>
       </div>
-      <div class="route-strip">
-        <div class="route-col">Backlog</div>
-        <div class="route-col armed">Ready</div>
-        <div class="route-col armed">In Progress</div>
-        <div class="route-col">Review</div>
-        <div class="route-col">Done</div>
-      </div>
-      <div class="route-editor">
-        <label>Trigger Column</label>
-        <input type="text" value="Ready" readonly>
-        <label>Command Template</label>
-        <select>
-          <option>/solve — General-purpose bug/task solver</option>
-          <option>/prd2epic — Convert PRD to Epic with Stories</option>
-          <option>/testgen — Generate tests for uncovered code</option>
-          <option>/migrate — Database migration implementation</option>
-        </select>
-        <label>Prompt Template</label>
-        <textarea>Solve ticket {issue_key}: {summary}. Read the codebase, implement the fix, run tests.</textarea>
-        <label>On Success: move to</label>
-        <select>
-          <option>Review</option>
-          <option>Done</option>
-          <option>In Progress</option>
-        </select>
-        <label>On Failure: move to</label>
-        <select>
-          <option>Blocked</option>
-          <option>Backlog</option>
-        </select>
-      </div>
+      <div id="routes-content"><div class="spinner"></div></div>
     </main>
 
     <!-- Team View -->
@@ -617,45 +544,7 @@
         <h2>Team</h2>
         <p>See who's online, what's running, and ticket pipeline activity.</p>
       </div>
-      <div class="team-grid">
-        <div class="team-member">
-          <div class="member-header">
-            <div class="member-avatar"></div>
-            <div>
-              <div class="member-name">Travis</div>
-              <div class="member-status">Online — 2 agents running</div>
-            </div>
-          </div>
-          <div class="member-sessions">
-            <div class="session-row"><span>GRID-185</span><span style="color:var(--green)">running</span></div>
-            <div class="session-row"><span>GRID-183</span><span style="color:var(--green)">running</span></div>
-          </div>
-        </div>
-        <div class="team-member">
-          <div class="member-header">
-            <div class="member-avatar"></div>
-            <div>
-              <div class="member-name">Karthik</div>
-              <div class="member-status">Online — idle</div>
-            </div>
-          </div>
-          <div class="member-sessions">
-            <div class="session-row"><span>GRID-180</span><span style="color:var(--idle)">completed</span></div>
-          </div>
-        </div>
-        <div class="team-member">
-          <div class="member-header">
-            <div class="member-avatar"></div>
-            <div>
-              <div class="member-name">Mac Mini Worker</div>
-              <div class="member-status offline">Offline — last seen 2h ago</div>
-            </div>
-          </div>
-          <div class="member-sessions">
-            <div class="session-row"><span>No recent sessions</span></div>
-          </div>
-        </div>
-      </div>
+      <div id="team-content"><div class="spinner"></div></div>
     </main>
 
     <!-- Templates View -->
@@ -664,106 +553,7 @@
         <h2>Templates</h2>
         <p>Browse, create, and edit reusable command templates for your agent routes.</p>
       </div>
-
-      <div class="template-section">
-        <h3>Global Templates</h3>
-        <div class="template-list">
-          <div class="template-card">
-            <div>
-              <div class="template-name">/solve</div>
-              <div class="template-desc">General-purpose bug/task solver. Reads codebase, implements fix, runs tests.</div>
-            </div>
-            <div class="template-actions">
-              <button>View</button>
-            </div>
-          </div>
-          <div class="template-card">
-            <div>
-              <div class="template-name">/prd2epic</div>
-              <div class="template-desc">Convert a PRD document to an Epic with Stories.</div>
-            </div>
-            <div class="template-actions">
-              <button>View</button>
-            </div>
-          </div>
-          <div class="template-card">
-            <div>
-              <div class="template-name">/testgen</div>
-              <div class="template-desc">Generate comprehensive tests for uncovered code.</div>
-            </div>
-            <div class="template-actions">
-              <button>View</button>
-            </div>
-          </div>
-          <div class="template-card">
-            <div>
-              <div class="template-name">/migrate</div>
-              <div class="template-desc">Database migration implementation.</div>
-            </div>
-            <div class="template-actions">
-              <button>View</button>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <div class="template-section">
-        <h3>Team Templates</h3>
-        <div class="template-list">
-          <div class="template-card">
-            <div>
-              <div class="template-name">/fix-prisma</div>
-              <div class="template-desc">Fix Prisma schema issues — knows your ORM patterns and soft deletes.</div>
-            </div>
-            <div class="template-actions">
-              <button>Edit</button>
-              <button>Delete</button>
-            </div>
-          </div>
-          <div class="template-card">
-            <div>
-              <div class="template-name">/update-docs</div>
-              <div class="template-desc">Update API docs in your OpenAPI 3.1 format with request/response examples.</div>
-            </div>
-            <div class="template-actions">
-              <button>Edit</button>
-              <button>Delete</button>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <div class="template-section">
-        <h3>Project Templates</h3>
-        <div class="template-list">
-          <div class="template-card">
-            <div>
-              <div class="template-name">/deploy-check</div>
-              <div class="template-desc">Pre-deploy validation — lint, test, build, check migrations.</div>
-            </div>
-            <div class="template-actions">
-              <button>Edit</button>
-              <button>Delete</button>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <div class="template-form">
-        <h3>Create Template</h3>
-        <label>Name</label>
-        <input type="text" placeholder="/my-command">
-        <label>Description</label>
-        <input type="text" placeholder="What this template does...">
-        <label>Prompt Template</label>
-        <textarea placeholder="Solve {issue_key}: {summary}. Include specific instructions for your codebase here."></textarea>
-        <label>Recommended Transitions</label>
-        <input type="text" placeholder="on_launch: In Progress, on_success: Review, on_failure: Blocked">
-        <div class="form-actions">
-          <button class="btn-save">Create Template</button>
-          <button class="btn-cancel">Cancel</button>
-        </div>
-      </div>
+      <div id="templates-content"><div class="spinner"></div></div>
     </main>
 
     <!-- Setup View -->
@@ -772,49 +562,43 @@
         <h2>Setup</h2>
         <p>Connect your board, manage edge nodes, and configure your agent.</p>
       </div>
-
-      <div class="setup-section">
-        <h3>Connect Board</h3>
-        <label>Jira Board URL</label>
-        <input type="text" placeholder="https://yoursite.atlassian.net/jira/software/projects/PROJ/boards/42">
-        <div class="form-actions">
-          <button class="btn-save">Connect Board</button>
-        </div>
-      </div>
-
-      <div class="setup-section">
-        <h3>Edge Nodes</h3>
-        <div class="edge-list">
-          <div class="edge-node">
-            <span class="edge-hostname">Travis-MBP</span>
-            <span class="edge-status online">Online — 2 sessions active</span>
-          </div>
-          <div class="edge-node">
-            <span class="edge-hostname">Karthik-Desktop</span>
-            <span class="edge-status online">Online — idle</span>
-          </div>
-          <div class="edge-node">
-            <span class="edge-hostname">Mac-Mini-Worker</span>
-            <span class="edge-status offline">Offline — last seen 2h ago</span>
-          </div>
-        </div>
-      </div>
-
-      <div class="setup-section">
-        <h3>Install Agent</h3>
-        <p style="font-size: 13px; color: var(--muted); margin-bottom: 8px;">Run this command on any machine to connect it as an edge node:</p>
-        <code class="install-cmd">curl -fsSL https://swarmgrid.org/install | sh</code>
-      </div>
+      <div id="setup-content"><div class="spinner"></div></div>
     </main>
   </div>
 
+  <script src="https://cdn.jsdelivr.net/npm/driver.js@1.3.1/dist/driver.js.iife.js"></script>
   <script>
-    // Auth check — redirect to login if no JWT
+    const API = "https://swarmgrid-api.fly.dev";
+
+    // ── State ──────────────────────────────────────────────
+    let currentUser = null;
+    let boards = [];
+    let currentBoardId = null;
+    let allTemplates = [];
+    let selectedRouteStatus = null;
+
+    // ── API helper ─────────────────────────────────────────
+    async function api(path, options = {}) {
+      const token = document.cookie.split(';').find(c => c.trim().startsWith('sg_token='));
+      const jwt = token ? token.split('=')[1].trim() : '';
+      const res = await fetch(API + path, {
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer ' + jwt,
+        },
+        ...options,
+      });
+      if (res.status === 401) { window.location.href = 'login.html'; return null; }
+      if (res.status === 204) return null;
+      return res.json();
+    }
+
+    // ── Auth bootstrap ─────────────────────────────────────
     (function checkAuth() {
       const token = document.cookie.split(';').find(c => c.trim().startsWith('sg_token='));
       const urlToken = new URLSearchParams(window.location.search).get('token');
       if (urlToken) {
-        document.cookie = `sg_token=${urlToken}; path=/; max-age=${72*3600}; SameSite=Lax`;
+        document.cookie = `sg_token=${urlToken}; path=/; max-age=${72 * 3600}; SameSite=Lax`;
         window.history.replaceState({}, '', window.location.pathname);
         return;
       }
@@ -823,32 +607,564 @@
       }
     })();
 
-    // Tab navigation
+    // ── Tab navigation ─────────────────────────────────────
     const pages = ['board', 'routes', 'team', 'templates', 'setup'];
     const nav = document.getElementById('page-nav');
+    let activePage = 'board';
 
     function setPage(page) {
+      activePage = page;
       pages.forEach(p => {
         const view = document.getElementById(`view-${p}`);
         const link = nav.querySelector(`[data-page="${p}"]`);
         if (view) view.classList.toggle('hidden', p !== page);
         if (link) link.classList.toggle('active', p === page);
       });
+      // Load data for the page
+      if (page === 'board') loadBoard();
+      if (page === 'routes') loadRoutes();
+      if (page === 'team') loadTeam();
+      if (page === 'templates') loadTemplates();
+      if (page === 'setup') loadSetup();
     }
 
     nav.addEventListener('click', (e) => {
       const page = e.target.dataset.page;
-      if (page) {
-        e.preventDefault();
-        setPage(page);
-      }
+      if (page) { e.preventDefault(); setPage(page); }
     });
 
-    // Logout
+    // ── Logout ─────────────────────────────────────────────
     document.getElementById('logout-btn').addEventListener('click', () => {
       document.cookie = 'sg_token=; path=/; max-age=0';
       window.location.href = 'login.html';
     });
+
+    // ── Board switcher ─────────────────────────────────────
+    const boardSwitcher = document.getElementById('board-switcher');
+    boardSwitcher.addEventListener('change', () => {
+      currentBoardId = boardSwitcher.value || null;
+      if (activePage === 'board') loadBoard();
+      if (activePage === 'routes') loadRoutes();
+    });
+
+    // ── Escape HTML ────────────────────────────────────────
+    function esc(str) {
+      const d = document.createElement('div');
+      d.textContent = str || '';
+      return d.innerHTML;
+    }
+
+    // ── BOARD TAB ──────────────────────────────────────────
+    async function loadBoard() {
+      const el = document.getElementById('board-content');
+      if (!currentBoardId) {
+        el.innerHTML = '<div class="empty-state"><p>Connect your first board in the Setup tab</p></div>';
+        return;
+      }
+      el.innerHTML = '<div class="spinner"></div>';
+      const data = await api(`/api/boards/${currentBoardId}/snapshot`);
+      if (!data) return;
+      const columns = data.columns || [];
+      if (!columns.length) {
+        el.innerHTML = '<div class="empty-state"><p>No columns found on this board</p></div>';
+        return;
+      }
+      el.innerHTML = '<div class="columns" id="columns"></div>';
+      const container = document.getElementById('columns');
+      columns.forEach(col => {
+        const tickets = col.tickets || [];
+        let html = `<div class="column"><div class="column-title">${esc(col.name)} <span class="column-count">${tickets.length}</span></div>`;
+        tickets.forEach(t => {
+          const dot = t.agent_status === 'running'
+            ? '<span class="status-dot status-active"></span>'
+            : t.agent_status === 'idle'
+              ? '<span class="status-dot status-idle"></span>'
+              : '';
+          html += `<div class="ticket-card"><div class="ticket-key">${dot}${esc(t.key)}</div><div class="ticket-summary">${esc(t.summary)}</div></div>`;
+        });
+        html += '</div>';
+        container.insertAdjacentHTML('beforeend', html);
+      });
+    }
+
+    // ── ROUTES TAB ─────────────────────────────────────────
+    async function loadRoutes() {
+      const el = document.getElementById('routes-content');
+      if (!currentBoardId) {
+        el.innerHTML = '<div class="empty-state"><p>Connect a board first to configure routes</p></div>';
+        return;
+      }
+      el.innerHTML = '<div class="spinner"></div>';
+      const [routes, snapshot] = await Promise.all([
+        api(`/api/boards/${currentBoardId}/routes`),
+        api(`/api/boards/${currentBoardId}/snapshot`),
+      ]);
+      if (!routes && !snapshot) return;
+
+      const routeList = Array.isArray(routes) ? routes : (routes && routes.routes ? routes.routes : []);
+      const columns = snapshot ? (snapshot.columns || []) : [];
+      const columnNames = columns.map(c => c.name);
+      const armedSet = new Set(routeList.filter(r => r.enabled !== false).map(r => r.status));
+
+      let html = '<div class="route-strip" id="route-strip">';
+      columnNames.forEach(name => {
+        const armed = armedSet.has(name) ? ' armed' : '';
+        html += `<div class="route-col${armed}" data-status="${esc(name)}">${esc(name)}</div>`;
+      });
+      html += '</div>';
+      html += '<div id="route-editor-area"></div>';
+      html += `<div class="form-actions" style="margin-top:16px"><button class="btn-save" id="add-route-btn">Add Route</button></div>`;
+      el.innerHTML = html;
+
+      // Click a column pill to select/edit that route
+      el.querySelectorAll('.route-col').forEach(pill => {
+        pill.addEventListener('click', () => {
+          const status = pill.dataset.status;
+          const route = routeList.find(r => r.status === status);
+          renderRouteEditor(status, route, columnNames, routeList);
+        });
+      });
+
+      // Add route button
+      document.getElementById('add-route-btn').addEventListener('click', () => {
+        renderRouteEditor('', null, columnNames, routeList);
+      });
+
+      if (!routeList.length) {
+        document.getElementById('route-editor-area').innerHTML = '<div class="empty-state"><p>Add a route to start automating</p></div>';
+      }
+    }
+
+    function renderRouteEditor(status, route, columnNames, routeList) {
+      const area = document.getElementById('route-editor-area');
+      const isNew = !route;
+      const colOptions = columnNames.map(n => `<option value="${esc(n)}"${route && route.on_success === n ? ' selected' : ''}>${esc(n)}</option>`).join('');
+      const colOptionsFail = columnNames.map(n => `<option value="${esc(n)}"${route && route.on_failure === n ? ' selected' : ''}>${esc(n)}</option>`).join('');
+      const enabled = route ? route.enabled !== false : true;
+
+      area.innerHTML = `
+        <div class="route-editor">
+          <label>Trigger Column</label>
+          <input type="text" id="re-status" value="${esc(isNew ? '' : status)}" ${isNew ? '' : 'readonly'} placeholder="Column name">
+          <label>Command Template</label>
+          <input type="text" id="re-command" value="${esc(route ? route.command || '' : '')}" placeholder="/solve">
+          <label>Prompt Template</label>
+          <textarea id="re-prompt" placeholder="Solve ticket {issue_key}: {summary}.">${esc(route ? route.prompt || '' : '')}</textarea>
+          <label>On Success: move to</label>
+          <select id="re-success">${colOptions}</select>
+          <label>On Failure: move to</label>
+          <select id="re-failure">${colOptionsFail}</select>
+          <div class="form-actions">
+            <button class="btn-save" id="re-save">${isNew ? 'Create Route' : 'Save Route'}</button>
+            ${!isNew ? '<button class="btn-cancel" id="re-toggle">' + (enabled ? 'Disable' : 'Enable') + '</button>' : ''}
+            ${!isNew ? '<button class="btn-cancel" id="re-delete" style="color:var(--orange)">Delete</button>' : ''}
+          </div>
+        </div>`;
+
+      document.getElementById('re-save').addEventListener('click', async () => {
+        const body = {
+          status: document.getElementById('re-status').value,
+          command: document.getElementById('re-command').value,
+          prompt: document.getElementById('re-prompt').value,
+          on_success: document.getElementById('re-success').value,
+          on_failure: document.getElementById('re-failure').value,
+        };
+        if (isNew) {
+          await api(`/api/boards/${currentBoardId}/routes`, { method: 'POST', body: JSON.stringify(body) });
+        } else {
+          await api(`/api/boards/${currentBoardId}/routes/${encodeURIComponent(status)}`, { method: 'PUT', body: JSON.stringify(body) });
+        }
+        loadRoutes();
+      });
+
+      if (!isNew) {
+        document.getElementById('re-toggle').addEventListener('click', async () => {
+          await api(`/api/boards/${currentBoardId}/routes/${encodeURIComponent(status)}/toggle`, { method: 'POST' });
+          loadRoutes();
+        });
+        document.getElementById('re-delete').addEventListener('click', async () => {
+          await api(`/api/boards/${currentBoardId}/routes/${encodeURIComponent(status)}`, { method: 'DELETE' });
+          loadRoutes();
+        });
+      }
+    }
+
+    // ── TEAM TAB ───────────────────────────────────────────
+    async function loadTeam() {
+      const el = document.getElementById('team-content');
+      el.innerHTML = '<div class="spinner"></div>';
+      const [nodes, teams] = await Promise.all([
+        api('/api/edge/nodes'),
+        api('/api/teams'),
+      ]);
+      if (!nodes && !teams) return;
+
+      const nodeList = Array.isArray(nodes) ? nodes : (nodes && nodes.nodes ? nodes.nodes : []);
+      const teamList = Array.isArray(teams) ? teams : (teams && teams.teams ? teams.teams : []);
+
+      // If a team exists, load members for the first team
+      let members = [];
+      if (teamList.length) {
+        const teamId = teamList[0].id || teamList[0].team_id;
+        const membersData = await api(`/api/teams/${teamId}/members`);
+        members = Array.isArray(membersData) ? membersData : (membersData && membersData.members ? membersData.members : []);
+      }
+
+      if (!nodeList.length && !members.length) {
+        let html = '<div class="empty-state"><p>Create a team to collaborate</p>';
+        html += `<div class="form-actions" style="justify-content:center;margin-top:16px"><button class="btn-save" id="create-team-btn">Create Team</button></div></div>`;
+        el.innerHTML = html;
+        document.getElementById('create-team-btn').addEventListener('click', async () => {
+          const name = prompt('Team name:');
+          if (name) { await api('/api/teams', { method: 'POST', body: JSON.stringify({ name }) }); loadTeam(); }
+        });
+        return;
+      }
+
+      let html = '<div class="team-grid">';
+
+      // Show edge nodes as team member cards
+      nodeList.forEach(node => {
+        const online = node.online || node.status === 'online';
+        const statusClass = online ? '' : ' offline';
+        const sessions = node.sessions || [];
+        const sessionCount = sessions.length;
+        const statusText = online
+          ? (sessionCount ? `Online — ${sessionCount} session${sessionCount > 1 ? 's' : ''} active` : 'Online — idle')
+          : `Offline — last seen ${esc(node.last_seen || 'unknown')}`;
+
+        html += `<div class="team-member"><div class="member-header"><div class="member-avatar"></div><div>`;
+        html += `<div class="member-name">${esc(node.hostname || node.name)}</div>`;
+        html += `<div class="member-status${statusClass}">${statusText}</div>`;
+        html += `</div></div><div class="member-sessions">`;
+        if (sessions.length) {
+          sessions.forEach(s => {
+            const color = s.status === 'running' ? 'var(--green)' : 'var(--idle)';
+            html += `<div class="session-row"><span>${esc(s.ticket || s.name || 'session')}</span><span style="color:${color}">${esc(s.status || 'active')}</span></div>`;
+          });
+        } else {
+          html += '<div class="session-row"><span>No recent sessions</span></div>';
+        }
+        html += '</div></div>';
+      });
+
+      // Show team members
+      members.forEach(m => {
+        html += `<div class="team-member"><div class="member-header"><div class="member-avatar"></div><div>`;
+        html += `<div class="member-name">${esc(m.name || m.username)}</div>`;
+        html += `<div class="member-status">${esc(m.role || 'member')}</div>`;
+        html += `</div></div></div>`;
+      });
+
+      html += '</div>';
+      el.innerHTML = html;
+    }
+
+    // ── TEMPLATES TAB ──────────────────────────────────────
+    async function loadTemplates() {
+      const el = document.getElementById('templates-content');
+      el.innerHTML = '<div class="spinner"></div>';
+      const data = await api('/api/templates');
+      if (!data) return;
+      allTemplates = Array.isArray(data) ? data : (data && data.templates ? data.templates : []);
+
+      const globalTemplates = allTemplates.filter(t => t.scope === 'global');
+      const teamTemplates = allTemplates.filter(t => t.scope === 'team');
+      const projectTemplates = allTemplates.filter(t => t.scope === 'project');
+      const customTemplates = allTemplates.filter(t => t.scope !== 'global');
+
+      let html = '';
+
+      // Global
+      html += '<div class="template-section"><h3>Global Templates</h3><div class="template-list">';
+      if (globalTemplates.length) {
+        globalTemplates.forEach(t => {
+          html += `<div class="template-card"><div><div class="template-name">${esc(t.name)}</div><div class="template-desc">${esc(t.description)}</div></div><div class="template-actions"><button onclick="viewTemplate('${esc(t.id || t.name)}')">View</button></div></div>`;
+        });
+      } else {
+        html += '<div style="color:var(--muted);font-size:13px;padding:8px 0">No global templates available</div>';
+      }
+      html += '</div></div>';
+
+      // Team
+      html += '<div class="template-section"><h3>Team Templates</h3><div class="template-list">';
+      if (teamTemplates.length) {
+        teamTemplates.forEach(t => {
+          html += templateCardEditable(t);
+        });
+      } else {
+        html += '<div style="color:var(--muted);font-size:13px;padding:8px 0">No team templates yet</div>';
+      }
+      html += '</div></div>';
+
+      // Project
+      html += '<div class="template-section"><h3>Project Templates</h3><div class="template-list">';
+      if (projectTemplates.length) {
+        projectTemplates.forEach(t => {
+          html += templateCardEditable(t);
+        });
+      } else {
+        html += '<div style="color:var(--muted);font-size:13px;padding:8px 0">No project templates yet</div>';
+      }
+      html += '</div></div>';
+
+      if (!customTemplates.length) {
+        html += '<div style="color:var(--muted);font-size:13px;text-align:center;padding:12px 0">Create your first template below</div>';
+      }
+
+      // Create form
+      html += `
+        <div class="template-form">
+          <h3>Create Template</h3>
+          <label>Name</label>
+          <input type="text" id="tpl-name" placeholder="/my-command">
+          <label>Description</label>
+          <input type="text" id="tpl-desc" placeholder="What this template does...">
+          <label>Prompt Template</label>
+          <textarea id="tpl-prompt" placeholder="Solve {issue_key}: {summary}. Include specific instructions for your codebase here."></textarea>
+          <label>Scope</label>
+          <select id="tpl-scope" style="width:100%;background:var(--panel);border:1px solid var(--border);border-radius:6px;color:var(--text);font-family:inherit;font-size:13px;padding:8px 10px">
+            <option value="project">Project</option>
+            <option value="team">Team</option>
+          </select>
+          <div class="form-actions">
+            <button class="btn-save" id="tpl-create-btn">Create Template</button>
+          </div>
+        </div>`;
+
+      el.innerHTML = html;
+
+      document.getElementById('tpl-create-btn').addEventListener('click', async () => {
+        const body = {
+          name: document.getElementById('tpl-name').value,
+          description: document.getElementById('tpl-desc').value,
+          prompt: document.getElementById('tpl-prompt').value,
+          scope: document.getElementById('tpl-scope').value,
+        };
+        await api('/api/templates', { method: 'POST', body: JSON.stringify(body) });
+        loadTemplates();
+      });
+    }
+
+    function templateCardEditable(t) {
+      const id = t.id || t.name;
+      return `<div class="template-card"><div><div class="template-name">${esc(t.name)}</div><div class="template-desc">${esc(t.description)}</div></div><div class="template-actions"><button onclick="editTemplate('${esc(id)}')">Edit</button><button onclick="deleteTemplate('${esc(id)}')">Delete</button></div></div>`;
+    }
+
+    window.viewTemplate = function(id) {
+      const t = allTemplates.find(x => (x.id || x.name) === id);
+      if (!t) return;
+      const area = document.getElementById('templates-content');
+      const existing = document.getElementById('tpl-view-overlay');
+      if (existing) existing.remove();
+      const div = document.createElement('div');
+      div.id = 'tpl-view-overlay';
+      div.className = 'route-editor';
+      div.style.marginTop = '16px';
+      div.innerHTML = `<label>Name</label><input value="${esc(t.name)}" readonly><label>Description</label><input value="${esc(t.description)}" readonly><label>Prompt</label><textarea readonly>${esc(t.prompt || '')}</textarea><div class="form-actions"><button class="btn-cancel" onclick="this.closest('#tpl-view-overlay').remove()">Close</button></div>`;
+      area.appendChild(div);
+    };
+
+    window.editTemplate = async function(id) {
+      const t = allTemplates.find(x => (x.id || x.name) === id);
+      if (!t) return;
+      const newDesc = prompt('Description:', t.description);
+      if (newDesc === null) return;
+      const newPrompt = prompt('Prompt:', t.prompt || '');
+      if (newPrompt === null) return;
+      await api(`/api/templates/${encodeURIComponent(id)}`, {
+        method: 'PUT',
+        body: JSON.stringify({ description: newDesc, prompt: newPrompt }),
+      });
+      loadTemplates();
+    };
+
+    window.deleteTemplate = async function(id) {
+      if (!confirm('Delete this template?')) return;
+      await api(`/api/templates/${encodeURIComponent(id)}`, { method: 'DELETE' });
+      loadTemplates();
+    };
+
+    // ── SETUP TAB ──────────────────────────────────────────
+    async function loadSetup() {
+      const el = document.getElementById('setup-content');
+      el.innerHTML = '<div class="spinner"></div>';
+      const nodes = await api('/api/edge/nodes');
+      const nodeList = Array.isArray(nodes) ? nodes : (nodes && nodes.nodes ? nodes.nodes : []);
+
+      let html = '';
+
+      // Connect Board
+      html += `
+        <div class="setup-section" id="setup-connect">
+          <h3>Connect Board</h3>
+          <label>Jira Board URL</label>
+          <input type="text" id="setup-board-url" placeholder="https://yoursite.atlassian.net/jira/software/projects/PROJ/boards/42">
+          <label>Jira Email</label>
+          <input type="text" id="setup-jira-email" placeholder="you@company.com">
+          <label>Jira API Token</label>
+          <input type="password" id="setup-jira-token" placeholder="Your Jira API token">
+          <div class="form-actions">
+            <button class="btn-save" id="setup-connect-btn">Connect Board</button>
+          </div>
+        </div>`;
+
+      // Edge Nodes
+      html += '<div class="setup-section"><h3>Edge Nodes</h3><div class="edge-list" id="setup-nodes">';
+      if (nodeList.length) {
+        nodeList.forEach(node => {
+          const online = node.online || node.status === 'online';
+          const sessions = node.sessions || [];
+          const sessionCount = sessions.length;
+          const statusText = online
+            ? (sessionCount ? `Online — ${sessionCount} session${sessionCount > 1 ? 's' : ''} active` : 'Online — idle')
+            : `Offline — last seen ${esc(node.last_seen || 'unknown')}`;
+          const statusClass = online ? 'online' : 'offline';
+          html += `<div class="edge-node"><span class="edge-hostname">${esc(node.hostname || node.name)}</span><span class="edge-status ${statusClass}">${statusText}</span></div>`;
+        });
+      } else {
+        html += '<div class="empty-state" style="padding:20px"><p>No edge nodes connected yet. Run the install command below.</p></div>';
+      }
+      html += '</div></div>';
+
+      // Install Agent
+      html += `
+        <div class="setup-section" id="setup-install">
+          <h3>Install Agent</h3>
+          <p style="font-size: 13px; color: var(--muted); margin-bottom: 8px;">Run this command on any machine to connect it as an edge node:</p>
+          <code class="install-cmd">curl -fsSL https://swarmgrid.org/install | sh</code>
+        </div>`;
+
+      el.innerHTML = html;
+
+      document.getElementById('setup-connect-btn').addEventListener('click', async () => {
+        const url = document.getElementById('setup-board-url').value.trim();
+        if (!url) return;
+        // Parse Jira board URL: https://site.atlassian.net/jira/software/projects/PROJ/boards/42
+        const m = url.match(/https?:\/\/([^/]+)\/.*\/projects\/([^/]+)\/boards\/(\d+)/);
+        const body = {
+          board_url: url,
+          site_url: m ? `https://${m[1]}` : url,
+          project_key: m ? m[2] : '',
+          board_id: m ? parseInt(m[3], 10) : 0,
+          jira_email: document.getElementById('setup-jira-email').value.trim(),
+          jira_token: document.getElementById('setup-jira-token').value.trim(),
+        };
+        const result = await api('/api/boards', { method: 'POST', body: JSON.stringify(body) });
+        if (result) {
+          await loadBoards();
+          setPage('board');
+        }
+      });
+    }
+
+    // ── Load boards into switcher ──────────────────────────
+    async function loadBoards() {
+      const data = await api('/api/boards');
+      boards = Array.isArray(data) ? data : (data && data.boards ? data.boards : []);
+      boardSwitcher.innerHTML = '';
+      if (!boards.length) {
+        boardSwitcher.innerHTML = '<option value="">No boards</option>';
+        currentBoardId = null;
+        return;
+      }
+      boards.forEach(b => {
+        const opt = document.createElement('option');
+        opt.value = b.id || b.board_id;
+        opt.textContent = b.name || b.project_key || `Board ${b.board_id}`;
+        boardSwitcher.appendChild(opt);
+      });
+      if (!currentBoardId) currentBoardId = boards[0].id || boards[0].board_id;
+      boardSwitcher.value = currentBoardId;
+    }
+
+    // ── Driver.js onboarding tour ──────────────────────────
+    function startOnboardingTour() {
+      const driver = window.driver.js.driver;
+      const driverObj = driver({
+        showProgress: true,
+        steps: [
+          {
+            popover: {
+              title: 'Welcome to SwarmGrid!',
+              description: 'Your AI-powered kanban pipeline. Let\'s get you set up in 60 seconds.',
+            }
+          },
+          {
+            element: '[data-page="setup"]',
+            popover: {
+              title: 'Setup Tab',
+              description: 'Let\'s connect your first kanban board.',
+            }
+          },
+          {
+            element: '#setup-board-url',
+            popover: {
+              title: 'Jira Board URL',
+              description: 'Paste your Jira board URL here to connect it.',
+            },
+            onHighlightStarted: () => setPage('setup'),
+          },
+          {
+            element: '[data-page="routes"]',
+            popover: {
+              title: 'Routes Tab',
+              description: 'Configure which columns trigger AI agents and what commands they run.',
+            }
+          },
+          {
+            element: '#setup-install',
+            popover: {
+              title: 'Install Agent',
+              description: 'Run this on your machine to connect it as an edge node.',
+            },
+            onHighlightStarted: () => setPage('setup'),
+          },
+          {
+            element: '[data-page="board"]',
+            popover: {
+              title: 'Board Tab',
+              description: 'Watch your tickets flow through the pipeline with live agent status.',
+            }
+          },
+          {
+            popover: {
+              title: 'You\'re all set!',
+              description: 'Your agents will start working as soon as you connect a board and install the agent.',
+            }
+          },
+        ],
+      });
+      driverObj.drive();
+    }
+
+    // ── Boot ───────────────────────────────────────────────
+    async function boot() {
+      // Load current user
+      currentUser = await api('/api/auth/me');
+      if (!currentUser) return;
+      const userMenu = document.getElementById('user-menu');
+      const avatar = currentUser.avatar_url || currentUser.avatar || '';
+      const name = currentUser.name || currentUser.login || currentUser.username || 'User';
+      if (avatar) {
+        userMenu.innerHTML = `<img src="${esc(avatar)}" alt="avatar"> <span>${esc(name)}</span>`;
+      } else {
+        userMenu.innerHTML = `<span>${esc(name)}</span>`;
+      }
+
+      // Load boards
+      await loadBoards();
+
+      // Load initial page
+      loadBoard();
+
+      // If no boards, trigger onboarding tour
+      if (!boards.length) {
+        setTimeout(startOnboardingTour, 500);
+      }
+    }
+
+    boot();
   </script>
 
 </body>
