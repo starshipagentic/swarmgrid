@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>SwarmGrid — AI Agent Swarm Orchestrator</title>
-  <meta name="description" content="Orchestrate AI agent swarms for your kanban board. Poll tickets, launch Claude agents, watch them work, share sessions with your team.">
+  <meta name="description" content="Configure in the browser. Your machine does the work. Orchestrate AI agent swarms for your kanban board.">
   <style>
     :root {
       --bg: #0c1116;
@@ -24,9 +24,37 @@
     }
     .container { max-width: 960px; margin: 0 auto; padding: 0 24px; }
 
+    /* Header nav */
+    .site-nav {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 16px 0;
+    }
+    .site-nav .logo {
+      font-family: Menlo, Monaco, Consolas, monospace;
+      font-size: 20px;
+      font-weight: 700;
+      color: var(--accent);
+      text-decoration: none;
+    }
+    .site-nav .nav-links {
+      display: flex;
+      gap: 24px;
+      align-items: center;
+    }
+    .site-nav .nav-links a {
+      color: var(--muted);
+      text-decoration: none;
+      font-size: 14px;
+      font-weight: 500;
+      transition: color 0.2s;
+    }
+    .site-nav .nav-links a:hover { color: var(--text); }
+
     /* Hero */
     .hero {
-      padding: 40px 0 24px;
+      padding: 60px 0 24px;
       text-align: center;
     }
     .hero h1 {
@@ -45,7 +73,7 @@
       font-size: 15px;
       color: var(--muted);
       max-width: 600px;
-      margin: 0 auto 20px;
+      margin: 0 auto 24px;
     }
     .hero .cta {
       display: inline-flex;
@@ -71,6 +99,53 @@
       background: transparent;
       color: var(--accent);
       border: 2px solid var(--accent);
+    }
+    .btn-large {
+      padding: 14px 36px;
+      font-size: 16px;
+      border-radius: 10px;
+    }
+
+    /* How it works */
+    .how-it-works {
+      padding: 60px 0;
+    }
+    .how-it-works h2 {
+      font-size: 36px;
+      font-weight: 700;
+      color: var(--accent);
+      text-align: center;
+      margin-bottom: 48px;
+    }
+    .steps {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 20px;
+      max-width: 800px;
+      margin: 0 auto;
+    }
+    .step {
+      text-align: center;
+      padding: 24px 16px;
+      background: var(--panel);
+      border-radius: 12px;
+      border-top: 3px solid var(--accent);
+    }
+    .step .step-num {
+      font-family: Menlo, monospace;
+      font-size: 28px;
+      font-weight: 700;
+      color: var(--accent);
+      margin-bottom: 8px;
+    }
+    .step .step-title {
+      font-size: 15px;
+      font-weight: 600;
+      margin-bottom: 6px;
+    }
+    .step .step-desc {
+      font-size: 13px;
+      color: var(--muted);
     }
 
     /* Install */
@@ -235,22 +310,62 @@
     @media (max-width: 700px) {
       .hero h1 { font-size: 40px; }
       .feature-grid { grid-template-columns: 1fr; }
+      .steps { grid-template-columns: 1fr 1fr; }
+    }
+    @media (max-width: 480px) {
+      .steps { grid-template-columns: 1fr; }
     }
   </style>
 </head>
 <body>
 
   <div class="container">
+    <nav class="site-nav">
+      <a href="/" class="logo">SwarmGrid</a>
+      <div class="nav-links">
+        <a href="pricing.html">Pricing</a>
+        <a href="https://github.com/starshipagentic/swarmgrid">GitHub</a>
+        <a href="login.html" class="btn btn-primary">Get Started</a>
+      </div>
+    </nav>
+
     <section class="hero">
       <h1>SwarmGrid</h1>
-      <div class="tagline">AI agent swarm orchestrator for kanban boards</div>
+      <div class="tagline">Configure in the browser. Your machine does the work.</div>
       <div class="sub">
-        Poll your board. Launch Claude agents in tmux. Watch them work.
-        Share sessions with your team. Scale from one agent to a swarm.
+        Orchestrate AI agent swarms for your kanban board.
+        Poll tickets, launch Claude agents, watch them work, share sessions with your team.
       </div>
       <div class="cta">
-        <a href="https://github.com/starshipagentic/swarmgrid" class="btn btn-primary">GitHub</a>
+        <a href="login.html" class="btn btn-primary btn-large">Get Started</a>
+        <a href="https://github.com/starshipagentic/swarmgrid" class="btn btn-secondary">GitHub</a>
         <a href="https://pypi.org/project/swarmgrid/" class="btn btn-secondary">PyPI</a>
+      </div>
+    </section>
+
+    <section class="how-it-works">
+      <h2>How it works</h2>
+      <div class="steps">
+        <div class="step">
+          <div class="step-num">1</div>
+          <div class="step-title">Sign in with GitHub</div>
+          <div class="step-desc">One click. No payment required.</div>
+        </div>
+        <div class="step">
+          <div class="step-num">2</div>
+          <div class="step-title">Connect your board</div>
+          <div class="step-desc">Paste your Jira board URL. Configure routes in the dashboard.</div>
+        </div>
+        <div class="step">
+          <div class="step-num">3</div>
+          <div class="step-title">Install the agent</div>
+          <div class="step-desc">One command. Runs on your machine with your Claude plan.</div>
+        </div>
+        <div class="step">
+          <div class="step-num">4</div>
+          <div class="step-title">Watch tickets flow</div>
+          <div class="step-desc">Tickets trigger agents. Sessions stream to your dashboard.</div>
+        </div>
       </div>
     </section>
 
@@ -326,8 +441,8 @@
           <p>See every ticket that went through the pipeline. Who has what, what status, when it moved. No standup needed.</p>
         </div>
         <div class="feature">
-          <h3>Zero Infrastructure</h3>
-          <p>No cloud. No Docker. No servers. Runs on your laptop with tmux, SSH, and SQLite. Just type <code>swarmgrid</code>.</p>
+          <h3>Your Machine, Your Code</h3>
+          <p>Agents run on your laptop with your Claude plan. SwarmGrid orchestrates. Your code and credentials never leave your machine.</p>
         </div>
       </div>
     </section>
@@ -345,7 +460,7 @@
     </section>
 
     <footer class="footer">
-      <p><a href="https://github.com/starshipagentic/swarmgrid">GitHub</a> · <a href="https://pypi.org/project/swarmgrid/">PyPI</a></p>
+      <p><a href="pricing.html">Pricing</a> · <a href="https://github.com/starshipagentic/swarmgrid">GitHub</a> · <a href="https://pypi.org/project/swarmgrid/">PyPI</a> · <a href="dashboard.html">Dashboard</a></p>
       <p>MIT License</p>
     </footer>
   </div>
