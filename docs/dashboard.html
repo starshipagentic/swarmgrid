@@ -1085,105 +1085,143 @@
       // Step 1: Welcome overlay
       const welcome = driver({
         showProgress: false,
-        allowClose: false,
+        allowClose: true,
         steps: [{
           popover: {
             title: 'Welcome to SwarmGrid! 👋',
-            description: 'Let\'s connect your first kanban board. This will take about 60 seconds.',
+            description: 'Let\'s connect your first kanban board.<br>We\'ll walk you through 3 steps.',
             nextBtnText: 'Let\'s go →',
           }
         }],
         onDestroyStarted: () => {
           welcome.destroy();
-          startStep2();
+          startConnectBoard();
         }
       });
       welcome.drive();
 
-      // Step 2: Navigate to Setup and highlight the board URL input
-      function startStep2() {
+      // Step 2: Navigate to Setup — highlight the WHOLE connect board section
+      // and WAIT for user to actually connect (watch for board list to change)
+      function startConnectBoard() {
         setPage('setup');
         setTimeout(() => {
-          const step2 = driver({
+          const connectSection = document.querySelector('.setup-section');
+          if (!connectSection) return;
+
+          const step = driver({
             showProgress: false,
-            allowClose: false,
+            allowClose: true,
             steps: [{
-              element: '#setup-board-url',
+              element: '.setup-section',
               popover: {
-                title: 'Step 1: Connect your board',
-                description: 'Paste your Jira board URL here. It looks like:<br><code style="color:var(--green);font-size:11px">https://yoursite.atlassian.net/jira/software/projects/PROJ/boards/42</code><br><br>Fill in the URL, email, and API token, then click <strong>Connect Board</strong>.<br><br><em>Click "Next" when you\'re done, or skip if you want to explore first.</em>',
-                nextBtnText: 'Next →',
+                title: 'Step 1 of 3: Connect your board',
+                description: `
+                  <div style="line-height:1.7">
+                  <strong>1.</strong> Paste your Jira board URL<br>
+                  <code style="color:var(--green);font-size:11px">https://yoursite.atlassian.net/.../projects/PROJ/boards/42</code><br>
+                  <strong>2.</strong> Enter your Jira email<br>
+                  <strong>3.</strong> Enter your Jira API token
+                  (<a href="https://id.atlassian.com/manage-profile/security/api-tokens" target="_blank" style="color:var(--accent)">create one here</a>)<br>
+                  <strong>4.</strong> Click <strong>Connect Board</strong><br><br>
+                  <em style="color:var(--muted)">Fill in all fields above, then click Connect Board. I'll wait.</em>
+                  </div>`,
+                nextBtnText: 'I connected my board →',
                 prevBtnText: 'Skip tour',
+                side: 'bottom',
+                align: 'center',
               }
             }],
-            onDestroyStarted: () => { step2.destroy(); startStep3(); },
-            onPrevClick: () => { step2.destroy(); },
-          });
-          step2.drive();
-        }, 300);
-      }
-
-      // Step 3: Show Routes tab
-      function startStep3() {
-        setPage('routes');
-        setTimeout(() => {
-          const step3 = driver({
-            showProgress: false,
-            allowClose: false,
-            steps: [{
-              element: '#view-routes',
-              popover: {
-                title: 'Step 2: Configure routes',
-                description: 'Once your board is connected, you\'ll see your columns here. Click a column to set up a trigger — pick a slash command, set transitions, and arm it.',
-                nextBtnText: 'Next →',
+            onDestroyStarted: () => {
+              step.destroy();
+              // Check if a board was actually connected
+              if (boards.length > 0) {
+                showBoardSuccess();
+              } else {
+                startInstallStep();
               }
-            }],
-            onDestroyStarted: () => { step3.destroy(); startStep4(); },
+            },
+            onPrevClick: () => { step.destroy(); },
           });
-          step3.drive();
-        }, 300);
+          step.drive();
+        }, 400);
       }
 
-      // Step 4: Show install command
-      function startStep4() {
-        setPage('setup');
-        setTimeout(() => {
-          const step4 = driver({
-            showProgress: false,
-            allowClose: false,
-            steps: [{
-              element: '#setup-install',
-              popover: {
-                title: 'Step 3: Install the agent',
-                description: 'Run this command on your machine. It installs the SwarmGrid agent that connects to this dashboard and runs Claude on your tickets.<br><br>Your code and credentials stay on your machine.',
-                nextBtnText: 'Next →',
-              }
-            }],
-            onDestroyStarted: () => { step4.destroy(); startStep5(); },
-          });
-          step4.drive();
-        }, 300);
-      }
-
-      // Step 5: Show Board tab
-      function startStep5() {
+      // Step 2b: Board connected! Show it briefly
+      function showBoardSuccess() {
         setPage('board');
         setTimeout(() => {
-          const step5 = driver({
+          const step = driver({
             showProgress: false,
-            allowClose: false,
+            allowClose: true,
             steps: [{
               element: '#view-board',
               popover: {
-                title: 'Step 4: Watch it work',
-                description: 'This is your live board. When tickets enter a trigger column, agents pick them up automatically. You\'ll see status indicators light up as Claude works.',
-                nextBtnText: 'Got it! ✓',
+                title: 'Your board is connected! 🎉',
+                description: 'Your Jira columns and tickets will appear here as the heartbeat polls your board.<br><br>Next, let\'s set up the agent on your machine.',
+                nextBtnText: 'Next →',
               }
             }],
-            onDestroyStarted: () => { step5.destroy(); },
+            onDestroyStarted: () => { step.destroy(); startInstallStep(); },
           });
-          step5.drive();
-        }, 300);
+          step.drive();
+        }, 400);
+      }
+
+      // Step 3: Install the agent
+      function startInstallStep() {
+        setPage('setup');
+        setTimeout(() => {
+          const step = driver({
+            showProgress: false,
+            allowClose: true,
+            steps: [{
+              element: '#setup-install',
+              popover: {
+                title: 'Step 2 of 3: Install the agent',
+                description: `
+                  <div style="line-height:1.7">
+                  Copy this command and run it in your terminal:<br><br>
+                  <code style="color:var(--green);font-size:12px;background:var(--bg);padding:6px 10px;border-radius:6px;display:block;margin:4px 0">curl -fsSL https://swarmgrid.org/install | sh</code><br>
+                  It installs the SwarmGrid agent on your machine.<br>
+                  Your code and credentials <strong>stay on your machine</strong>.
+                  </div>`,
+                nextBtnText: 'Next →',
+                side: 'top',
+              }
+            }],
+            onDestroyStarted: () => { step.destroy(); startRoutesStep(); },
+          });
+          step.drive();
+        }, 400);
+      }
+
+      // Step 4: Show Routes tab
+      function startRoutesStep() {
+        setPage('routes');
+        setTimeout(() => {
+          const step = driver({
+            showProgress: false,
+            allowClose: true,
+            steps: [{
+              element: '#view-routes',
+              popover: {
+                title: 'Step 3 of 3: Configure routes',
+                description: `
+                  <div style="line-height:1.7">
+                  Routes map your board columns to AI commands.<br><br>
+                  Click a column → pick a slash command → set transitions → arm it.<br><br>
+                  <em>You can set this up now or come back later.</em>
+                  </div>`,
+                nextBtnText: 'Done! ✓',
+              }
+            }],
+            onDestroyStarted: () => {
+              step.destroy();
+              setPage('board');
+            },
+          });
+          step.drive();
+        }, 400);
       }
     }
 
