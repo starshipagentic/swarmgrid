@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "swarmgrid"
-version = "1.0.1"
+version = "1.0.2"
 description = "AI agent swarm orchestrator for kanban boards — heartbeat, tmux sessions, team visibility."
 requires-python = ">=3.11"
 dependencies = [
