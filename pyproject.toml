@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "swarmgrid"
 version = "1.0.0"
-description = "AI agent swarm orchestrator for Jira — heartbeat, tmux sessions, team visibility."
+description = "AI agent swarm orchestrator for kanban boards — heartbeat, tmux sessions, team visibility."
 requires-python = ">=3.11"
 dependencies = [
   "dagster>=1.11,<2",
