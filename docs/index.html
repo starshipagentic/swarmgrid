@@ -100,6 +100,29 @@
       border-radius: 6px;
     }
 
+    /* Video */
+    .video-section {
+      padding: 60px 0;
+      text-align: center;
+    }
+    .video-section h2 {
+      font-size: 36px;
+      font-weight: 700;
+      color: var(--accent);
+      margin-bottom: 28px;
+    }
+    .video-wrap {
+      border-radius: 16px;
+      overflow: hidden;
+      border: 2px solid #334150;
+      box-shadow: 0 20px 60px rgba(0,0,0,0.5);
+    }
+    .video-wrap video {
+      width: 100%;
+      display: block;
+      background: var(--bg);
+    }
+
     /* Progression */
     .progression {
       padding: 80px 0;
@@ -234,6 +257,15 @@
     <section class="install">
       <code>pip install swarmgrid</code>
       <div class="alt">or: <code>git clone https://github.com/starshipagentic/swarmgrid.git && cd swarmgrid && ./setup.sh</code></div>
+    </section>
+
+    <section class="video-section">
+      <h2>See it in action</h2>
+      <div class="video-wrap">
+        <video controls preload="metadata" poster="">
+          <source src="swarmgrid-explainer.mp4" type="video/mp4">
+        </video>
+      </div>
     </section>
 
     <section class="progression">
