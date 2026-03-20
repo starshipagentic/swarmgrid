@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Trav Jira Heartbeat WebUI2</title>
+    <link rel="stylesheet" href="/static/webui2.css?v=20260314a" />
+  </head>
+  <body>
+    <div id="app">
+      <header class="topbar">
+        <div>
+          <h1>Trav Jira Heartbeat WebUI2</h1>
+          <p id="headline">Loading…</p>
+        </div>
+        <div class="actions">
+          <button id="refresh-now">Refresh</button>
+          <button id="heartbeat-now">Heartbeat Now</button>
+        </div>
+      </header>
+
+      <section class="statusbar">
+        <span id="counts">Loading…</span>
+        <span id="phase-note">Phase 0: board + selected ticket only.</span>
+      </section>
+
+      <section class="statusbar debugbar">
+        <span>Debug terminals:</span>
+        <div class="actions">
+          <button id="debug-plain-shell">Plain ttyd shell</button>
+          <button id="debug-tmux-shell">tmux shell</button>
+        </div>
+      </section>
+
+      <main class="layout">
+        <section class="panel left">
+          <div class="panel-header">
+            <h2>Board</h2>
+            <span id="board-meta"></span>
+          </div>
+          <div id="columns" class="columns"></div>
+        </section>
+
+        <section class="panel right">
+          <div class="panel-header">
+            <h2>Selected Ticket</h2>
+            <div class="detail-actions">
+              <button id="open-iterm" disabled>Open iTerm</button>
+              <button id="run-now" disabled>Run Now</button>
+              <button id="load-observer" disabled>Observe</button>
+            </div>
+          </div>
+
+          <div id="ticket-meta" class="ticket-meta">Select a ticket.</div>
+
+          <div class="terminal-modes">
+            <button class="mode active" data-mode="summary">Summary</button>
+            <button class="mode" data-mode="output">Output</button>
+            <button class="mode" data-mode="observer">Observer</button>
+            <button class="mode" data-mode="live">Live</button>
+          </div>
+
+          <div id="summary-view" class="viewer"></div>
+          <pre id="output-view" class="viewer hidden"></pre>
+          <div id="observer-view" class="viewer hidden">
+            <pre id="observer-output" class="observer-output">Observer not loaded yet. Click "Observe".</pre>
+            <form id="observer-input-form" class="observer-input-form">
+              <input id="observer-input" type="text" placeholder="Type to send input to tmux session" />
+              <button type="submit">Send</button>
+            </form>
+          </div>
+          <div id="live-view" class="viewer hidden">
+            <pre id="live-output" class="live-output" tabindex="0">Click here and start typing. Connect to a session first.</pre>
+            <div id="live-status" class="live-status">disconnected</div>
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <script src="/static/webui2.js?v=20260314a" type="module"></script>
+  </body>
+</html>

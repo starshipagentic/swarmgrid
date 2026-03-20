@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>SwarmGrid</title>
+    <link rel="stylesheet" href="/static/styles.css?v=20260319a" />
+  </head>
+  <body>
+    <div id="app">
+      <header class="topbar">
+        <div class="brand">
+          <h1>SwarmGrid</h1>
+          <p id="headline">Loading...</p>
+          <select id="board-switcher" class="board-switcher"></select>
+        </div>
+        <nav class="page-nav" id="page-nav">
+          <a href="/board" data-page="board">Board</a>
+          <a href="/routes" data-page="routes">Routes</a>
+          <a href="/team" data-page="team">Team</a>
+          <a href="/setup" data-page="setup">Setup</a>
+          <a href="/sharing" data-page="sharing">Sharing</a>
+        </nav>
+        <div class="actions">
+          <div class="pulse-strip" id="pulse-strip"></div>
+          <button id="launch-terminal" title="Launch a scratch terminal session (Ctrl+T)">Terminal</button>
+        </div>
+      </header>
+
+      <main id="view-board" class="page-view">
+        <section id="ticket-detail" class="panel ticket-panel">
+          <div class="spinner-wrap"><div class="spinner"></div></div>
+        </section>
+
+        <div id="panel-divider" class="panel-divider" title="Drag to resize"></div>
+
+        <section class="board">
+          <div class="board-header">
+            <div class="board-header-left">
+              <h2>Board</h2>
+              <div class="board-inline-stats" id="board-stats"></div>
+              <div class="legend inline-legend" id="legend"></div>
+            </div>
+            <div class="board-header-right">
+              <input id="board-search" type="text" class="board-search-input" placeholder="Search tickets..." autocomplete="off" />
+              <p id="board-meta"></p>
+            </div>
+          </div>
+          <div id="search-results" class="search-results hidden"></div>
+          <div id="columns" class="columns"><div class="spinner-wrap"><div class="spinner"></div><p>Loading board...</p></div></div>
+        </section>
+      </main>
+
+      <main id="view-routes" class="page-view hidden">
+        <section class="panel page-panel">
+          <div class="board-header">
+            <h2>Routes</h2>
+            <p>Arm trigger stages and inspect the command mapping for each status.</p>
+          </div>
+          <div id="routes-page"></div>
+        </section>
+      </main>
+
+      <main id="view-setup" class="page-view hidden">
+        <section class="panel page-panel">
+          <div class="board-header">
+            <h2>Setup</h2>
+            <p>Edit Jira and Claude operator settings for this machine.</p>
+          </div>
+          <form id="setup-form" class="setup-form"></form>
+        </section>
+      </main>
+
+      <main id="view-team" class="page-view hidden">
+        <section class="panel page-panel">
+          <div class="board-header">
+            <h2>Team</h2>
+            <p>Tickets that passed through the pipeline across your team.</p>
+          </div>
+          <div id="team-page"></div>
+        </section>
+      </main>
+
+      <main id="view-sharing" class="page-view hidden">
+        <section class="panel page-panel sharing-guide">
+          <div class="board-header">
+            <h2>Sharing</h2>
+            <p>Share tmux sessions with your team via upterm.</p>
+          </div>
+          <div id="sharing-page"></div>
+        </section>
+      </main>
+    </div>
+
+    <script src="/static/app.js?v=20260319a" type="module"></script>
+  </body>
+</html>

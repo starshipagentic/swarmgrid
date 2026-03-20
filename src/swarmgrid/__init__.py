@@ -1,0 +1,1 @@
+"""Local Jira heartbeat package."""

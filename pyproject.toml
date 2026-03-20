@@ -1,0 +1,28 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "swarmgrid"
+version = "1.0.0"
+description = "AI agent swarm orchestrator for Jira — heartbeat, tmux sessions, team visibility."
+requires-python = ">=3.11"
+dependencies = [
+  "dagster>=1.11,<2",
+  "dagster-webserver>=1.11,<2",
+  "fastapi>=0.116,<1",
+  "keyring>=25,<26",
+  "PyYAML>=6.0,<7",
+  "rich>=13.9,<14",
+  "requests>=2.32,<3",
+  "uvicorn>=0.35,<1",
+]
+
+[project.scripts]
+swarmgrid = "swarmgrid.cli:main"
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]

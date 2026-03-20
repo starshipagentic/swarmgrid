@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>testwebtmux1</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@xterm/xterm@5.5.0/css/xterm.css" />
+    <link rel="stylesheet" href="/static/styles.css?v=20260314n" />
+    <style>
+      body, html { margin: 0; height: 100%; overflow: hidden; background: #0f1419; }
+      #shell { display: flex; flex-direction: column; height: 100%; padding: 10px; gap: 10px; }
+      #bar { display: flex; gap: 10px; align-items: center; color: #c7d5e0; font-family: Menlo, monospace; }
+      #issue { width: 180px; padding: 8px 10px; border-radius: 8px; border: 1px solid #334150; background: #151c22; color: #e7edf3; }
+      #status { color: #9fb2c7; font-size: 13px; }
+      #term { flex: 1; border: 1px solid #334150; border-radius: 12px; padding: 8px; overflow: hidden; background: #0f1419; }
+      #term .xterm, #term .xterm-viewport { height: 100% !important; }
+      button { border: 1px solid #334150; background: #202a33; color: #e7edf3; border-radius: 8px; padding: 8px 12px; }
+    </style>
+  </head>
+  <body>
+    <div id="shell">
+      <div id="bar">
+        <strong>testwebtmux1</strong>
+        <input id="issue" value="LMSV3-755" />
+        <button id="connect">Connect</button>
+        <button id="focus">Focus</button>
+        <span id="status">idle</span>
+      </div>
+      <div id="term"></div>
+    </div>
+    <script type="module" src="/static/testwebtmux1.js?v=20260314n"></script>
+  </body>
+</html>

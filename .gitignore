@@ -1,0 +1,12 @@
+.venv/
+__pycache__/
+*.pyc
+.DS_Store
+operator-settings.yaml
+operator-settings.yaml.bak
+var/
+src/swarmgrid.egg-info/
+*.db
+board-routes.yaml
+boards/
+*.jira-map.yaml
