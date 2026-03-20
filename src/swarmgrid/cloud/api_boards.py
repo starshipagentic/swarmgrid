@@ -7,7 +7,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
 from .auth import get_current_user
-from .db import Board, Route, SessionLocal, TeamMember, User, AgentSession
+from .db import Board, Route, SessionLocal, Team, TeamMember, User, AgentSession
 
 router = APIRouter(prefix="/api/boards", tags=["boards"])
 
@@ -15,11 +15,15 @@ router = APIRouter(prefix="/api/boards", tags=["boards"])
 # ── Schemas ────────────────────────────────────────────────────────────
 
 class BoardCreate(BaseModel):
-    team_id: int
-    name: str
+    team_id: int | None = None
+    name: str = ""
     site_url: str = ""
     project_key: str = ""
     jira_board_id: str = ""
+    board_url: str = ""
+    board_id: int | None = None
+    jira_email: str = ""
+    jira_token: str = ""
 
 
 class BoardUpdate(BaseModel):
@@ -108,19 +112,40 @@ def list_boards(user: User = Depends(get_current_user)):
 def create_board(body: BoardCreate, user: User = Depends(get_current_user)):
     db = SessionLocal()
     try:
+        team_id = body.team_id
+        # Auto-create a personal team if none provided
+        if not team_id:
+            membership = db.query(TeamMember).filter(TeamMember.user_id == user.id).first()
+            if membership:
+                team_id = membership.team_id
+            else:
+                team = Team(
+                    slug=user.github_login,
+                    name=f"{user.display_name or user.github_login}'s team",
+                    created_by=user.id,
+                )
+                db.add(team)
+                db.flush()
+                db.add(TeamMember(team_id=team.id, user_id=user.id, role="owner"))
+                db.flush()
+                team_id = team.id
+
         member = (
             db.query(TeamMember)
-            .filter(TeamMember.team_id == body.team_id, TeamMember.user_id == user.id)
+            .filter(TeamMember.team_id == team_id, TeamMember.user_id == user.id)
             .first()
         )
         if not member:
             raise HTTPException(status_code=403, detail="Not a member of this team")
+
+        board_name = body.name or body.project_key or "My Board"
+        jira_board_id = body.jira_board_id or str(body.board_id or "")
         board = Board(
-            team_id=body.team_id,
-            name=body.name,
+            team_id=team_id,
+            name=board_name,
             site_url=body.site_url,
             project_key=body.project_key,
-            jira_board_id=body.jira_board_id,
+            jira_board_id=jira_board_id,
             created_by=user.id,
         )
         db.add(board)

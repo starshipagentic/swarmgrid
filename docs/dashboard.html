@@ -1078,64 +1078,113 @@
       boardSwitcher.value = currentBoardId;
     }
 
-    // ── Driver.js onboarding tour ──────────────────────────
+    // ── Driver.js interactive onboarding ──────────────────
     function startOnboardingTour() {
       const driver = window.driver.js.driver;
-      const driverObj = driver({
-        showProgress: true,
-        steps: [
-          {
-            popover: {
-              title: 'Welcome to SwarmGrid!',
-              description: 'Your AI-powered kanban pipeline. Let\'s get you set up in 60 seconds.',
-            }
-          },
-          {
-            element: '[data-page="setup"]',
-            popover: {
-              title: 'Setup Tab',
-              description: 'Let\'s connect your first kanban board.',
-            }
-          },
-          {
-            element: '#setup-board-url',
-            popover: {
-              title: 'Jira Board URL',
-              description: 'Paste your Jira board URL here to connect it.',
-            },
-            onHighlightStarted: () => setPage('setup'),
-          },
-          {
-            element: '[data-page="routes"]',
-            popover: {
-              title: 'Routes Tab',
-              description: 'Configure which columns trigger AI agents and what commands they run.',
-            }
-          },
-          {
-            element: '#setup-install',
-            popover: {
-              title: 'Install Agent',
-              description: 'Run this on your machine to connect it as an edge node.',
-            },
-            onHighlightStarted: () => setPage('setup'),
-          },
-          {
-            element: '[data-page="board"]',
-            popover: {
-              title: 'Board Tab',
-              description: 'Watch your tickets flow through the pipeline with live agent status.',
-            }
-          },
-          {
-            popover: {
-              title: 'You\'re all set!',
-              description: 'Your agents will start working as soon as you connect a board and install the agent.',
-            }
-          },
-        ],
+
+      // Step 1: Welcome overlay
+      const welcome = driver({
+        showProgress: false,
+        allowClose: false,
+        steps: [{
+          popover: {
+            title: 'Welcome to SwarmGrid! 👋',
+            description: 'Let\'s connect your first kanban board. This will take about 60 seconds.',
+            nextBtnText: 'Let\'s go →',
+          }
+        }],
+        onDestroyStarted: () => {
+          welcome.destroy();
+          startStep2();
+        }
       });
-      driverObj.drive();
+      welcome.drive();
+
+      // Step 2: Navigate to Setup and highlight the board URL input
+      function startStep2() {
+        setPage('setup');
+        setTimeout(() => {
+          const step2 = driver({
+            showProgress: false,
+            allowClose: false,
+            steps: [{
+              element: '#setup-board-url',
+              popover: {
+                title: 'Step 1: Connect your board',
+                description: 'Paste your Jira board URL here. It looks like:<br><code style="color:var(--green);font-size:11px">https://yoursite.atlassian.net/jira/software/projects/PROJ/boards/42</code><br><br>Fill in the URL, email, and API token, then click <strong>Connect Board</strong>.<br><br><em>Click "Next" when you\'re done, or skip if you want to explore first.</em>',
+                nextBtnText: 'Next →',
+                prevBtnText: 'Skip tour',
+              }
+            }],
+            onDestroyStarted: () => { step2.destroy(); startStep3(); },
+            onPrevClick: () => { step2.destroy(); },
+          });
+          step2.drive();
+        }, 300);
+      }
+
+      // Step 3: Show Routes tab
+      function startStep3() {
+        setPage('routes');
+        setTimeout(() => {
+          const step3 = driver({
+            showProgress: false,
+            allowClose: false,
+            steps: [{
+              element: '#view-routes',
+              popover: {
+                title: 'Step 2: Configure routes',
+                description: 'Once your board is connected, you\'ll see your columns here. Click a column to set up a trigger — pick a slash command, set transitions, and arm it.',
+                nextBtnText: 'Next →',
+              }
+            }],
+            onDestroyStarted: () => { step3.destroy(); startStep4(); },
+          });
+          step3.drive();
+        }, 300);
+      }
+
+      // Step 4: Show install command
+      function startStep4() {
+        setPage('setup');
+        setTimeout(() => {
+          const step4 = driver({
+            showProgress: false,
+            allowClose: false,
+            steps: [{
+              element: '#setup-install',
+              popover: {
+                title: 'Step 3: Install the agent',
+                description: 'Run this command on your machine. It installs the SwarmGrid agent that connects to this dashboard and runs Claude on your tickets.<br><br>Your code and credentials stay on your machine.',
+                nextBtnText: 'Next →',
+              }
+            }],
+            onDestroyStarted: () => { step4.destroy(); startStep5(); },
+          });
+          step4.drive();
+        }, 300);
+      }
+
+      // Step 5: Show Board tab
+      function startStep5() {
+        setPage('board');
+        setTimeout(() => {
+          const step5 = driver({
+            showProgress: false,
+            allowClose: false,
+            steps: [{
+              element: '#view-board',
+              popover: {
+                title: 'Step 4: Watch it work',
+                description: 'This is your live board. When tickets enter a trigger column, agents pick them up automatically. You\'ll see status indicators light up as Claude works.',
+                nextBtnText: 'Got it! ✓',
+              }
+            }],
+            onDestroyStarted: () => { step5.destroy(); },
+          });
+          step5.drive();
+        }, 300);
+      }
     }
 
     // ── Boot ───────────────────────────────────────────────
