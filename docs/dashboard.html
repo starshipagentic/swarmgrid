@@ -994,20 +994,43 @@
 
       let html = '';
 
-      // Connect Board
-      html += `
-        <div class="setup-section" id="setup-connect">
-          <h3>Connect Board</h3>
-          <label>Jira Board URL</label>
-          <input type="text" id="setup-board-url" placeholder="https://yoursite.atlassian.net/jira/software/projects/PROJ/boards/42">
-          <label>Jira Email</label>
-          <input type="text" id="setup-jira-email" placeholder="you@company.com">
-          <label>Jira API Token</label>
-          <input type="password" id="setup-jira-token" placeholder="Your Jira API token">
-          <div class="form-actions">
-            <button class="btn-save" id="setup-connect-btn">Connect Board</button>
-          </div>
-        </div>`;
+      // Connect Board — pre-fill if board already exists
+      const currentBoard = boards.find(b => b.id === currentBoardId) || {};
+      const boardUrl = currentBoard.site_url && currentBoard.project_key && currentBoard.jira_board_id
+        ? `${currentBoard.site_url}/jira/software/projects/${currentBoard.project_key}/boards/${currentBoard.jira_board_id}`
+        : '';
+      const boardEmail = currentBoard.jira_email || '';
+      const hasToken = currentBoard.jira_token ? true : false;
+
+      if (boardUrl) {
+        html += `
+          <div class="setup-section" id="setup-connect">
+            <h3>Connected Board</h3>
+            <div style="font-size:13px;color:var(--muted);margin-bottom:12px">
+              <strong style="color:var(--green)">●</strong> ${esc(currentBoard.name || currentBoard.project_key)} — connected
+            </div>
+            <label>Board URL</label>
+            <input type="text" value="${esc(boardUrl)}" readonly style="opacity:0.7">
+            <label>Jira Email</label>
+            <input type="text" value="${esc(boardEmail)}" readonly style="opacity:0.7">
+            <label>Jira API Token</label>
+            <input type="password" value="${hasToken ? '••••••••••••••••' : ''}" readonly style="opacity:0.7">
+          </div>`;
+      } else {
+        html += `
+          <div class="setup-section" id="setup-connect">
+            <h3>Connect Board</h3>
+            <label>Jira Board URL</label>
+            <input type="text" id="setup-board-url" placeholder="https://yoursite.atlassian.net/jira/software/projects/PROJ/boards/42">
+            <label>Jira Email</label>
+            <input type="text" id="setup-jira-email" placeholder="you@company.com">
+            <label>Jira API Token</label>
+            <input type="password" id="setup-jira-token" placeholder="Your Jira API token">
+            <div class="form-actions">
+              <button class="btn-save" id="setup-connect-btn">Connect Board</button>
+            </div>
+          </div>`;
+      }
 
       // Edge Nodes
       html += '<div class="setup-section"><h3>Edge Nodes</h3><div class="edge-list" id="setup-nodes">';

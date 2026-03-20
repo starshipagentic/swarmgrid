@@ -96,6 +96,8 @@ def _board_to_dict(b: Board) -> dict:
         "site_url": b.site_url,
         "project_key": b.project_key,
         "jira_board_id": b.jira_board_id,
+        "jira_email": b.jira_email or "",
+        "jira_token": "••••" if b.jira_token else "",
     }
 
 
@@ -231,7 +233,8 @@ async def board_snapshot(board_id: int, user: User = Depends(get_current_user)):
         if jira_columns:
             for col in jira_columns:
                 col_name = col.get("name", "")
-                col_issues = [i for i in jira_issues if i.get("status") == col_name]
+                col_statuses = set(col.get("statuses", [col_name]))
+                col_issues = [i for i in jira_issues if i.get("status") in col_statuses]
                 route = next((r for r in routes if r.status == col_name), None)
                 columns.append({
                     "status": col_name,
