@@ -11,6 +11,7 @@ from pydantic import BaseModel
 logger = logging.getLogger(__name__)
 
 from .auth import get_current_user
+from .crypto import encrypt, decrypt
 from .db import Board, Route, SessionLocal, Team, TeamMember, User, AgentSession
 
 router = APIRouter(prefix="/api/boards", tags=["boards"])
@@ -96,6 +97,8 @@ def _board_to_dict(b: Board) -> dict:
         "site_url": b.site_url,
         "project_key": b.project_key,
         "jira_board_id": b.jira_board_id,
+        "jira_email": decrypt(b.jira_email) if b.jira_email else "",
+        "jira_token": "••••" if b.jira_token else "",
     }
 
 
@@ -150,8 +153,8 @@ def create_board(body: BoardCreate, user: User = Depends(get_current_user)):
             site_url=body.site_url,
             project_key=body.project_key,
             jira_board_id=jira_board_id,
-            jira_email=body.jira_email,
-            jira_token=body.jira_token,
+            jira_email=encrypt(body.jira_email),
+            jira_token=encrypt(body.jira_token),
             created_by=user.id,
         )
         db.add(board)
@@ -231,7 +234,8 @@ async def board_snapshot(board_id: int, user: User = Depends(get_current_user)):
         if jira_columns:
             for col in jira_columns:
                 col_name = col.get("name", "")
-                col_issues = [i for i in jira_issues if i.get("status") == col_name]
+                col_statuses = set(col.get("statuses", [col_name]))
+                col_issues = [i for i in jira_issues if i.get("status") in col_statuses]
                 route = next((r for r in routes if r.status == col_name), None)
                 columns.append({
                     "status": col_name,
@@ -273,7 +277,7 @@ async def board_snapshot(board_id: int, user: User = Depends(get_current_user)):
 
 async def _fetch_jira_board(board: Board) -> tuple[list, list]:
     """Fetch board columns and issues from Jira API."""
-    auth = (board.jira_email, board.jira_token)
+    auth = (decrypt(board.jira_email), decrypt(board.jira_token))
     base = board.site_url.rstrip("/")
 
     async with httpx.AsyncClient(timeout=15) as client:
