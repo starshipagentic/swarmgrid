@@ -68,6 +68,45 @@ def build_parser() -> argparse.ArgumentParser:
     hub_sub.add_parser("stop", help="Stop the hub tmux session.")
     hub_sub.add_parser("status", help="Show hub status.")
 
+    agent_parser = subparsers.add_parser(
+        "agent",
+        parents=[common],
+        help="Start the edge agent daemon.",
+    )
+    agent_parser.add_argument(
+        "--server",
+        default="ssh://uptermd.upterm.dev:22",
+        help="Upterm relay server.",
+    )
+    agent_parser.add_argument(
+        "--github-user",
+        action="append",
+        dest="github_users",
+        help="Restrict SSH access to these GitHub users (repeatable).",
+    )
+    agent_parser.add_argument(
+        "--background",
+        action="store_true",
+        help="Start agent in background (don't block).",
+    )
+
+    menubar_parser = subparsers.add_parser(
+        "menubar",
+        parents=[common],
+        help="Launch the macOS menu bar app (wraps the agent daemon).",
+    )
+    menubar_parser.add_argument(
+        "--server",
+        default="ssh://uptermd.upterm.dev:22",
+        help="Upterm relay server.",
+    )
+    menubar_parser.add_argument(
+        "--github-user",
+        action="append",
+        dest="github_users",
+        help="Restrict SSH access to these GitHub users (repeatable).",
+    )
+
     return parser
 
 
@@ -154,6 +193,28 @@ def main(argv: list[str] | None = None) -> int:
             status = hub_status()
             print(json.dumps(status, indent=2))
             return 0
+
+    if args.command == "agent":
+        from .agent.daemon import start_agent
+
+        result = start_agent(
+            config_path=args.config,
+            upterm_server=args.server,
+            github_users=args.github_users,
+            foreground=not args.background,
+        )
+        print(json.dumps(result, indent=2))
+        return 0
+
+    if args.command == "menubar":
+        from .menubar.app import run_menubar_app
+
+        run_menubar_app(
+            config_path=args.config,
+            upterm_server=args.server,
+            github_users=args.github_users,
+        )
+        return 0
 
     parser.error(f"Unknown command: {args.command}")
     return 2
