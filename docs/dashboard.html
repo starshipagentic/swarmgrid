@@ -730,8 +730,27 @@
         renderRouteEditor('', null, columnNames, routeList);
       });
 
-      if (!routeList.length) {
-        document.getElementById('route-editor-area').innerHTML = '<div class="empty-state"><p>Add a route to start automating</p></div>';
+      // Show route summary table (always visible)
+      const editorArea = document.getElementById('route-editor-area');
+      if (routeList.length) {
+        let table = '<div style="margin-top:8px"><table style="width:100%;border-collapse:collapse;font-size:13px">';
+        table += '<tr style="color:var(--muted);text-align:left;border-bottom:1px solid var(--border)"><th style="padding:8px">Column</th><th style="padding:8px">Command</th><th style="padding:8px">On Launch</th><th style="padding:8px">On Success</th><th style="padding:8px">On Failure</th><th style="padding:8px">Status</th></tr>';
+        routeList.forEach(r => {
+          const statusColor = r.enabled !== false ? 'var(--green)' : 'var(--muted)';
+          const statusLabel = r.enabled !== false ? 'Armed' : 'Disabled';
+          table += `<tr style="border-bottom:1px solid var(--border);cursor:pointer" onclick="document.querySelector('.route-col[data-status=&quot;${esc(r.status)}&quot;]').click()">`;
+          table += `<td style="padding:8px;color:var(--accent)">${esc(r.status)}</td>`;
+          table += `<td style="padding:8px">${esc(r.action || '—')}</td>`;
+          table += `<td style="padding:8px">${esc(r.transition_on_launch || '—')}</td>`;
+          table += `<td style="padding:8px">${esc(r.transition_on_success || '—')}</td>`;
+          table += `<td style="padding:8px">${esc(r.transition_on_failure || '—')}</td>`;
+          table += `<td style="padding:8px;color:${statusColor}">${statusLabel}</td>`;
+          table += '</tr>';
+        });
+        table += '</table></div>';
+        editorArea.innerHTML = table;
+      } else {
+        editorArea.innerHTML = '<div class="empty-state"><p>Click a column above or Add Route to start automating</p></div>';
       }
     }
 
