@@ -47,6 +47,10 @@ def build_parser() -> argparse.ArgumentParser:
         help="Run heartbeat in a background tmux session (survives terminal close).",
     )
     subparsers.add_parser(
+        "stop",
+        help="Stop the background heartbeat.",
+    )
+    subparsers.add_parser(
         "status",
         parents=[common],
         help="Show local heartbeat state.",
@@ -158,7 +162,8 @@ def _resolve_config(config_arg: str) -> str:
 def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
-    args.config = _resolve_config(args.config)
+    if hasattr(args, 'config'):
+        args.config = _resolve_config(args.config)
 
     if args.command == "heartbeat-once":
         config_paths = _collect_config_paths(args)
@@ -169,6 +174,18 @@ def main(argv: list[str] | None = None) -> int:
         # Single board -> flat output; multi-board -> list
         output = results[0] if len(results) == 1 else results
         print(json.dumps(output, indent=2))
+        return 0
+
+    if args.command == "stop":
+        import subprocess
+        result = subprocess.run(
+            ["tmux", "kill-session", "-t", "swarmgrid-heartbeat"],
+            check=False, capture_output=True,
+        )
+        if result.returncode == 0:
+            print("Heartbeat stopped.")
+        else:
+            print("No heartbeat running.")
         return 0
 
     if args.command == "heartbeat":
