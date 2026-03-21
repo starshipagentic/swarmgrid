@@ -5,6 +5,8 @@ They create, read, update, and delete real data, then clean up.
 """
 import requests
 import pytest
+import yaml
+from pathlib import Path
 
 
 def _api(auth_token, api_url, path, method="GET", json=None):
@@ -248,3 +250,134 @@ class TestPersistence:
 
         # Clean up
         _api(auth_token, api_url, f"/api/boards/{board_id}/routes/{status}", "DELETE")
+
+
+# ── Pipeline Reality Tests ─────────────────────────────────
+# These tests verify the REAL pipeline configuration, not just UI rendering.
+# Some are EXPECTED TO FAIL — they expose gaps between config and reality.
+
+BOARD_ID = 1
+YAML_PATH = Path(__file__).resolve().parent.parent.parent / "board-routes.yaml"
+
+
+class TestHeartbeatDetectsTicket:
+    """Verify the heartbeat can actually detect tickets in trigger columns."""
+
+    def test_droid_do_route_exists_and_enabled(self, auth_token, api_url):
+        """The Droid-Do route must exist and be enabled for heartbeat to fire."""
+        resp = _api(auth_token, api_url, f"/api/boards/{BOARD_ID}/routes")
+        assert resp.status_code == 200
+        routes = resp.json()["routes"]
+        droid = next((r for r in routes if r["status"] == "Droid-Do"), None)
+        assert droid is not None, "Droid-Do route must exist for heartbeat to detect tickets"
+        assert droid["enabled"] is True, "Droid-Do route must be enabled"
+
+    def test_droid_do_column_exists_in_snapshot(self, auth_token, api_url):
+        """The Droid-Do column must exist on the actual Jira board."""
+        resp = _api(auth_token, api_url, f"/api/boards/{BOARD_ID}/snapshot")
+        assert resp.status_code == 200
+        columns = resp.json()["columns"]
+        col_names = [c["name"] for c in columns]
+        assert "Droid-Do" in col_names, "Droid-Do column must exist on the Jira board"
+
+
+class TestRouteHasCompleteConfiguration:
+    """A route without transitions won't move tickets through the pipeline.
+
+    This test SHOULD FAIL if the Droid-Do route in the cloud has no
+    transitions set — exposing a real gap in pipeline configuration.
+    """
+
+    def test_droid_do_has_transition_on_launch(self, auth_token, api_url):
+        resp = _api(auth_token, api_url, f"/api/boards/{BOARD_ID}/routes")
+        routes = resp.json()["routes"]
+        droid = next((r for r in routes if r["status"] == "Droid-Do"), None)
+        assert droid is not None
+        val = droid.get("transition_on_launch")
+        assert val and val.strip(), (
+            "Droid-Do route has no transition_on_launch — tickets won't move when work starts"
+        )
+
+    def test_droid_do_has_transition_on_success(self, auth_token, api_url):
+        resp = _api(auth_token, api_url, f"/api/boards/{BOARD_ID}/routes")
+        routes = resp.json()["routes"]
+        droid = next((r for r in routes if r["status"] == "Droid-Do"), None)
+        assert droid is not None
+        val = droid.get("transition_on_success")
+        assert val and val.strip(), (
+            "Droid-Do route has no transition_on_success — tickets won't move after completion"
+        )
+
+    def test_droid_do_has_transition_on_failure(self, auth_token, api_url):
+        resp = _api(auth_token, api_url, f"/api/boards/{BOARD_ID}/routes")
+        routes = resp.json()["routes"]
+        droid = next((r for r in routes if r["status"] == "Droid-Do"), None)
+        assert droid is not None
+        val = droid.get("transition_on_failure")
+        assert val and val.strip(), (
+            "Droid-Do route has no transition_on_failure — failed tickets will be stuck"
+        )
+
+
+class TestCloudRoutesMatchYaml:
+    """Cloud routes should mirror what's in board-routes.yaml.
+
+    This test SHOULD FAIL if the cloud route has drifted from the YAML —
+    meaning the local config and the cloud API are out of sync.
+    """
+
+    @pytest.fixture()
+    def yaml_routes(self):
+        assert YAML_PATH.exists(), f"board-routes.yaml not found at {YAML_PATH}"
+        data = yaml.safe_load(YAML_PATH.read_text())
+        return {r["status"]: r for r in data.get("routes", [])}
+
+    @pytest.fixture()
+    def cloud_routes(self, auth_token, api_url):
+        resp = _api(auth_token, api_url, f"/api/boards/{BOARD_ID}/routes")
+        assert resp.status_code == 200
+        return {r["status"]: r for r in resp.json()["routes"]}
+
+    def test_droid_do_action_matches(self, yaml_routes, cloud_routes):
+        assert "Droid-Do" in yaml_routes, "Droid-Do missing from YAML"
+        assert "Droid-Do" in cloud_routes, "Droid-Do missing from cloud"
+        yaml_action = yaml_routes["Droid-Do"].get("action", "")
+        cloud_action = cloud_routes["Droid-Do"].get("action", "")
+        assert yaml_action == cloud_action, (
+            f"Action mismatch — YAML: {yaml_action!r}, cloud: {cloud_action!r}"
+        )
+
+    def test_droid_do_prompt_matches(self, yaml_routes, cloud_routes):
+        assert "Droid-Do" in yaml_routes and "Droid-Do" in cloud_routes
+        yaml_prompt = yaml_routes["Droid-Do"].get("prompt_template", "")
+        cloud_prompt = cloud_routes["Droid-Do"].get("prompt_template", "")
+        assert yaml_prompt == cloud_prompt, (
+            f"Prompt mismatch — YAML: {yaml_prompt!r}, cloud: {cloud_prompt!r}"
+        )
+
+    def test_droid_do_transitions_match(self, yaml_routes, cloud_routes):
+        assert "Droid-Do" in yaml_routes and "Droid-Do" in cloud_routes
+        for field in ("transition_on_launch", "transition_on_success", "transition_on_failure"):
+            yaml_val = yaml_routes["Droid-Do"].get(field, "")
+            cloud_val = cloud_routes["Droid-Do"].get(field, "")
+            assert yaml_val == cloud_val, (
+                f"{field} mismatch — YAML: {yaml_val!r}, cloud: {cloud_val!r}"
+            )
+
+    def test_all_yaml_routes_exist_in_cloud(self, yaml_routes, cloud_routes):
+        missing = set(yaml_routes.keys()) - set(cloud_routes.keys())
+        assert not missing, f"Routes in YAML but not in cloud: {missing}"
+
+
+class TestTemplateResolution:
+    """Verify the template resolution endpoint returns usable prompts."""
+
+    def test_resolve_solve_template(self, auth_token, api_url):
+        resp = _api(auth_token, api_url, f"/api/templates/resolve/{BOARD_ID}//solve")
+        assert resp.status_code == 200, f"Template resolve failed: {resp.status_code} {resp.text}"
+        data = resp.json()
+        template = data.get("template", data)
+        prompt = template.get("prompt_template", "")
+        assert prompt and len(prompt.strip()) > 0, (
+            "Resolved /solve template has empty prompt_template"
+        )
