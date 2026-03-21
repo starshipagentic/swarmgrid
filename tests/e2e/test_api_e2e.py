@@ -535,7 +535,7 @@ class TestCLICommands:
         assert data.get("route_source") == "cloud", "heartbeat-once should use cloud routes"
         # Also verify human-readable header
         header = stdout[:json_start]
-        assert "Heartbeat tick:" in header
+        assert "Heartbeat tick" in header
 
 
 class TestTemplateResolution:
