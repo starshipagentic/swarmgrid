@@ -789,6 +789,9 @@
             action: document.getElementById('re-command').value || 'claude_default',
             prompt_template: document.getElementById('re-prompt').value,
             enabled: true,
+            transition_on_launch: document.getElementById('re-launch').value || null,
+            transition_on_success: document.getElementById('re-success').value || null,
+            transition_on_failure: document.getElementById('re-failure').value || null,
           };
           await api(`/api/boards/${currentBoardId}/routes`, { method: 'POST', body: JSON.stringify(body) });
         } else {

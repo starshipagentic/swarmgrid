@@ -43,6 +43,10 @@ class RouteCreate(BaseModel):
     action: str = "claude_default"
     prompt_template: str = ""
     enabled: bool = False
+    transition_on_launch: str | None = None
+    transition_on_success: str | None = None
+    transition_on_failure: str | None = None
+    allowed_issue_types: list[str] | None = None
 
 
 class RouteUpdate(BaseModel):
@@ -387,6 +391,10 @@ def create_route(board_id: int, body: RouteCreate, user: User = Depends(get_curr
             action=body.action,
             prompt_template=body.prompt_template,
             enabled=body.enabled,
+            transition_on_launch=body.transition_on_launch,
+            transition_on_success=body.transition_on_success,
+            transition_on_failure=body.transition_on_failure,
+            allowed_issue_types=json.dumps(body.allowed_issue_types) if body.allowed_issue_types else "",
         )
         db.add(route)
         db.commit()
