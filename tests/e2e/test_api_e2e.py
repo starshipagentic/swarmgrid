@@ -404,8 +404,8 @@ class TestHeartbeatCloudIntegration:
             assert "agent_status" in t, f"Ticket {t['key']} missing agent_status field"
 
 
-class TestStatusCommand:
-    """Verify the CLI status command reports cloud routes."""
+class TestCLICommands:
+    """Verify CLI commands work correctly with cloud routes."""
 
     def test_status_shows_cloud_routes(self):
         import subprocess as _sp
@@ -422,6 +422,21 @@ class TestStatusCommand:
         assert droid is not None
         assert droid["enabled"] is True
         assert droid["transition_on_launch"] == "In Progress"
+
+    def test_heartbeat_once_runs(self):
+        """heartbeat-once should complete and use cloud routes."""
+        import subprocess as _sp
+        result = _sp.run(
+            [".venv/bin/swarmgrid", "heartbeat-once"],
+            cwd="/Users/t/clients/swarmgrid",
+            capture_output=True, text=True, timeout=60,
+        )
+        assert result.returncode == 0, f"heartbeat-once failed: {result.stderr}"
+        import json as _j
+        data = _j.loads(result.stdout)
+        assert "Droid-Do" in data["watched_statuses"]
+        assert "issue_count" in data
+        assert "launched_count" in data
 
 
 class TestTemplateResolution:
