@@ -1,4 +1,4 @@
-.PHONY: test test-api test-browser heartbeat heartbeat-once status deploy
+.PHONY: test test-api test-browser heartbeat heartbeat-once start stop status deploy build-app
 
 # Run all E2E tests (API + browser)
 test:
@@ -16,9 +16,17 @@ test-browser:
 heartbeat-once:
 	.venv/bin/swarmgrid heartbeat-once | python3 -m json.tool
 
-# Run continuous heartbeat
+# Run continuous heartbeat (foreground)
 heartbeat:
 	.venv/bin/swarmgrid heartbeat
+
+# Start background heartbeat daemon
+start:
+	.venv/bin/swarmgrid heartbeat --background
+
+# Stop background heartbeat
+stop:
+	.venv/bin/swarmgrid stop
 
 # Show current status
 status:
