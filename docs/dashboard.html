@@ -687,6 +687,13 @@
       });
     }
 
+    // Auto-refresh board every 30 seconds when visible
+    setInterval(() => {
+      if (activePage === 'board' && currentBoardId && document.visibilityState === 'visible') {
+        loadBoard();
+      }
+    }, 30000);
+
     // ── ROUTES TAB ─────────────────────────────────────────
     async function loadRoutes() {
       const el = document.getElementById('routes-content');
