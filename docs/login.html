@@ -82,6 +82,14 @@
 </head>
 <body>
 
+  <script>
+    // Auto-redirect if already logged in
+    (function() {
+      const token = document.cookie.split(';').find(c => c.trim().startsWith('sg_token='));
+      if (token) { window.location.href = 'dashboard.html'; }
+    })();
+  </script>
+
   <div class="login-card">
     <div class="logo">SwarmGrid</div>
     <div class="subtitle">Sign in to configure your agent swarm</div>
