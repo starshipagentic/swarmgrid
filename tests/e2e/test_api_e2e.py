@@ -182,6 +182,13 @@ class TestTemplates:
         assert solve["scope"] == "global"
 
     def test_template_crud(self, auth_token, api_url):
+        # Clean up any leftover from prior runs
+        resp = _api(auth_token, api_url, "/api/templates")
+        if resp and resp.status_code == 200:
+            for t in resp.json().get("templates", []):
+                if t["name"] == "/sgtest-template":
+                    _api(auth_token, api_url, f"/api/templates/{t['id']}", "DELETE")
+
         # Create
         resp = _api(auth_token, api_url, "/api/templates", "POST", {
             "name": "/sgtest-template",
