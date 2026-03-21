@@ -27,7 +27,9 @@ class TestBoardTab:
         titles = authed_page.locator(".column-title").all_text_contents()
         names = [t.split("\xa0")[0].strip() for t in titles]  # strip count
         # Remove trailing numbers from "PRD 2" -> "PRD"
-        names = [re.sub(r'\s+\d+$', '', n) for n in names]
+        names = [re.sub(r'\s+\d+$', '', n).strip() for n in names]
+        # Strip any armed indicators (like ⚡)
+        names = [re.sub(r'\s*[⚡🔥✹◌].*$', '', n).strip() for n in names]
         assert "PRD" in names
         assert "Droid-Do" in names or "DROID-DO" in names
         assert "In Progress" in names or "IN PROGRESS" in names
