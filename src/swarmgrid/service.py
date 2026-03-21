@@ -284,10 +284,29 @@ def run_heartbeat(config_path: str | Path, force_reconsider: bool = False) -> di
 
 def get_status(config_path: str | Path) -> dict:
     config = load_config(config_path)
+
+    # Try cloud routes
+    cloud_routes = None
+    try:
+        cloud_routes = fetch_cloud_routes(config)
+    except Exception:
+        pass
+
+    if cloud_routes is not None:
+        config = _with_routes(config, cloud_routes)
+
     store = StateStore(config.local_state_dir)
     reconcile_processes(store)
     summary = store.summarize()
     summary["watched_statuses"] = config.watched_statuses
+    summary["route_source"] = "cloud" if cloud_routes is not None else "yaml"
+    summary["routes"] = [
+        {"status": r.status, "action": r.action, "enabled": r.enabled,
+         "transition_on_launch": r.transition_on_launch,
+         "transition_on_success": r.transition_on_success,
+         "transition_on_failure": r.transition_on_failure}
+        for r in config.routes
+    ]
     summary["local_state_dir"] = str(config.local_state_dir)
     summary["recent_runs"] = store.list_recent_process_runs()
     summary["archived_count"] = len(store.list_archived_processes(limit=200))
