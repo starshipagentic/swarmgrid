@@ -671,9 +671,14 @@
       }
       el.innerHTML = '<div class="columns" id="columns"></div>';
       const container = document.getElementById('columns');
+      // Build set of armed columns from routes
+      const routes = data.routes || [];
+      const armedCols = new Set(routes.filter(r => r.enabled).map(r => r.status));
+
       columns.forEach(col => {
         const tickets = col.tickets || [];
-        let html = `<div class="column"><div class="column-title">${esc(col.name)} <span class="column-count">${tickets.length}</span></div>`;
+        const armedBadge = armedCols.has(col.name) ? ' <span style="font-size:10px;color:var(--orange)" title="Route armed">&#x26A1;</span>' : '';
+        let html = `<div class="column"><div class="column-title">${esc(col.name)}${armedBadge} <span class="column-count">${tickets.length}</span></div>`;
         tickets.forEach(t => {
           const dot = t.agent_status === 'running'
             ? '<span class="status-dot status-active"></span>'
