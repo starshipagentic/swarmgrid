@@ -54,12 +54,17 @@ def run_heartbeat_loop(
 
         try:
             result = run_heartbeat(config_path)
-            logger.info(
-                "Heartbeat tick: %d issues, %d decisions, %d launched",
-                result.get("issue_count", 0),
-                result.get("decision_count", 0),
-                result.get("launched_count", 0),
-            )
+            issues = result.get("issue_count", 0)
+            launched = result.get("launched_count", 0)
+            statuses = result.get("watched_statuses", [])
+            reconciled = len(result.get("reconciled", []))
+
+            parts = [f"{issues} ticket{'s' if issues != 1 else ''} in {', '.join(statuses)}"]
+            if launched:
+                parts.append(f"{launched} launched")
+            if reconciled:
+                parts.append(f"{reconciled} reconciled")
+            logger.info("Tick: %s | next in %ds", " | ".join(parts), interval)
 
             # Best-effort cloud reporting
             try:
