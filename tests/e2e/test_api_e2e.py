@@ -519,11 +519,17 @@ class TestCLICommands:
             capture_output=True, text=True, timeout=60,
         )
         assert result.returncode == 0, f"heartbeat-once failed: {result.stderr}"
+        # Output has human-readable header then JSON starting with {
+        stdout = result.stdout
+        json_start = stdout.index("{")
         import json as _j
-        data = _j.loads(result.stdout)
+        data = _j.loads(stdout[json_start:])
         assert "Droid-Do" in data["watched_statuses"]
         assert "issue_count" in data
         assert "launched_count" in data
+        # Also verify human-readable header
+        header = stdout[:json_start]
+        assert "Heartbeat tick:" in header
 
 
 class TestTemplateResolution:
