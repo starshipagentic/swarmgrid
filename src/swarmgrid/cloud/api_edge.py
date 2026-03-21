@@ -208,3 +208,49 @@ def list_edge_nodes(user: User = Depends(get_current_user)):
         }
     finally:
         db.close()
+
+
+@router.post("/command/{ticket_key}")
+def send_edge_command(ticket_key: str, user: User = Depends(get_current_user)):
+    """Send a command to the user's edge node via SSH relay.
+
+    Currently supports: attach (open iTerm2 for a ticket's session).
+    The cloud is just a teammate — it SSHs into the edge and sends
+    the command through the force-command CGI handler.
+    """
+    db = SessionLocal()
+    try:
+        # Find the user's online edge node
+        node = db.query(EdgeNode).filter(
+            EdgeNode.owner_id == user.id,
+            EdgeNode.online == True,
+        ).first()
+        if not node:
+            raise HTTPException(status_code=404, detail="No online edge node")
+        if not node.ssh_connect:
+            raise HTTPException(status_code=400, detail="Edge node has no SSH connect string")
+
+        from .relay import attach_session
+        result = attach_session(node.ssh_connect, ticket_key=ticket_key)
+        return result
+    finally:
+        db.close()
+
+
+@router.post("/capture/{session_id}")
+def capture_session_output(session_id: str, user: User = Depends(get_current_user)):
+    """Capture terminal output from a session via SSH relay."""
+    db = SessionLocal()
+    try:
+        node = db.query(EdgeNode).filter(
+            EdgeNode.owner_id == user.id,
+            EdgeNode.online == True,
+        ).first()
+        if not node or not node.ssh_connect:
+            raise HTTPException(status_code=404, detail="No online edge node with SSH")
+
+        from .relay import capture_output
+        result = capture_output(node.ssh_connect, session_id)
+        return result
+    finally:
+        db.close()

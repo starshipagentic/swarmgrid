@@ -90,3 +90,19 @@ def kill_session(ssh_connect: str, session_id: str) -> dict:
 def list_sessions(ssh_connect: str) -> dict:
     """List all active sessions on an edge node."""
     return send_command(ssh_connect, {"cmd": "list"})
+
+
+def attach_session(ssh_connect: str, ticket_key: str = "", session_id: str = "") -> dict:
+    """Tell an edge node to open a tmux session in iTerm2/Terminal.
+
+    The cloud is just a teammate — it SSHs into the edge and sends the
+    attach command. The edge worker opens iTerm2 locally.
+    """
+    cmd: dict = {"cmd": "attach"}
+    if session_id:
+        cmd["session_id"] = session_id
+    elif ticket_key:
+        cmd["ticket_key"] = ticket_key
+    else:
+        return {"ok": False, "error": "ticket_key or session_id required"}
+    return send_command(ssh_connect, cmd)

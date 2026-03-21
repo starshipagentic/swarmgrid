@@ -728,7 +728,12 @@
           const boardData = data.board || {};
           const siteUrl = boardData.site_url || '';
           const ticketUrl = siteUrl ? `${siteUrl}/browse/${t.key}` : '#';
-          html += `<div class="ticket-card" style="cursor:pointer" onclick="window.open('${ticketUrl}','_blank')"><div class="ticket-key">${dot}${esc(t.key)}</div><div class="ticket-summary">${esc(t.summary)}</div></div>`;
+          const hasSession = t.agent_status === 'running' || t.agent_status === 'launching';
+          const clickAction = hasSession
+            ? `openSession('${esc(t.key)}','')`
+            : `window.open('${ticketUrl}','_blank')`;
+          const cursorTitle = hasSession ? 'Click to open Claude session' : 'Click to open in Jira';
+          html += `<div class="ticket-card" style="cursor:pointer" title="${cursorTitle}" onclick="${clickAction}"><div class="ticket-key">${dot}${esc(t.key)}</div><div class="ticket-summary">${esc(t.summary)}</div></div>`;
         });
         html += '</div>';
         container.insertAdjacentHTML('beforeend', html);
@@ -748,6 +753,27 @@
         sessHtml += '</table></div>';
         el.insertAdjacentHTML('beforeend', sessHtml);
       }
+    }
+
+    // ── Session opener ──────────────────────────────────────
+    async function openSession(ticketKey, sessionId) {
+      // Try to open iTerm2 via cloud → SSH → edge CGI command
+      const result = await api(`/api/edge/command/${encodeURIComponent(ticketKey)}`, { method: 'POST' });
+      if (result && result.ok && result.opened) {
+        // iTerm2 should have opened on the local machine
+        return;
+      }
+      // Fallback: show the attach command
+      const cmd = result && result.attach_command ? result.attach_command : `tmux attach -t ${sessionId}`;
+      const overlay = document.createElement('div');
+      overlay.className = 'route-editor';
+      overlay.style.cssText = 'position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);z-index:1000;max-width:600px;width:90%;box-shadow:0 8px 32px rgba(0,0,0,0.5)';
+      overlay.innerHTML = `
+        <label>Attach to session</label>
+        <input type="text" value="${cmd}" readonly onclick="this.select()" style="font-family:monospace;font-size:13px">
+        <p style="font-size:11px;color:var(--muted);margin-top:8px">Paste this in your terminal to see Claude working on ${ticketKey}.</p>
+        <div class="form-actions"><button class="btn-save" onclick="navigator.clipboard.writeText('${cmd}');this.textContent='Copied!'">Copy</button><button class="btn-cancel" onclick="this.closest('.route-editor').remove()">Close</button></div>`;
+      document.body.appendChild(overlay);
     }
 
     // Auto-refresh board every 30 seconds when visible
@@ -966,7 +992,7 @@
           nodeSessions.forEach(s => {
             const stateClass = s.state === 'running' ? 'session-state-running' : 'session-state-completed';
             const time = s.launched_at ? new Date(s.launched_at).toLocaleTimeString() : '';
-            html += `<div class="session-item"><span class="session-ticket">${esc(s.ticket_key)}</span><span class="${stateClass}">${esc(s.state)}</span><span style="color:var(--muted);font-size:10px">${time}</span></div>`;
+            html += `<div class="session-item" style="cursor:pointer" onclick="openSession('${esc(s.ticket_key)}','${esc(s.session_id)}')"><span class="session-ticket">${esc(s.ticket_key)}</span><span class="${stateClass}">${esc(s.state)}</span><span style="color:var(--muted);font-size:10px">${time}</span></div>`;
           });
         } else {
           html += '<div style="padding:4px 0;color:var(--muted)">No active sessions</div>';
