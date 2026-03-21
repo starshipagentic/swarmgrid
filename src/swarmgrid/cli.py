@@ -177,7 +177,8 @@ def main(argv: list[str] | None = None) -> int:
             issues = output.get("issue_count", 0)
             launched = output.get("launched_count", 0)
             statuses = output.get("watched_statuses", [])
-            print(f"Heartbeat tick: {issues} issue{'s' if issues != 1 else ''} in {', '.join(statuses)}, {launched} launched")
+            source = output.get("route_source", "yaml")
+            print(f"Heartbeat tick ({source} routes): {issues} issue{'s' if issues != 1 else ''} in {', '.join(statuses)}, {launched} launched")
             for d in output.get("decisions", []):
                 if d.get("should_launch"):
                     print(f"  Launched: {d['issue_key']} ({d['action']})")
