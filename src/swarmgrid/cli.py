@@ -134,9 +134,26 @@ def _collect_config_paths(args: argparse.Namespace) -> list[str]:
     return paths
 
 
+def _resolve_config(config_arg: str) -> str:
+    """Resolve config path, checking common locations if not found."""
+    p = Path(config_arg)
+    if p.exists():
+        return str(p)
+    # Check common locations
+    candidates = [
+        Path.home() / ".swarmgrid" / config_arg,
+        Path.home() / "clients" / "swarmgrid" / config_arg,
+    ]
+    for c in candidates:
+        if c.exists():
+            return str(c)
+    return config_arg  # let it fail with the original path
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
+    args.config = _resolve_config(args.config)
 
     if args.command == "heartbeat-once":
         config_paths = _collect_config_paths(args)
