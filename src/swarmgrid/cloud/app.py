@@ -175,6 +175,38 @@ async def callback(code: str):
     return RedirectResponse(f"{FRONTEND_URL}/dashboard.html?token={token}", status_code=302)
 
 
+@app.get("/api/auth/api-key")
+async def generate_api_key(request: Request):
+    """Generate a long-lived API key (30 days) for the edge agent."""
+    from .auth import decode_jwt
+    from .db import SessionLocal, User
+    token = request.cookies.get("swarmgrid_token")
+    if not token:
+        auth = request.headers.get("Authorization", "")
+        if auth.startswith("Bearer "):
+            token = auth[7:]
+    if not token:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    claims = decode_jwt(token)
+    user_id = int(claims["sub"])
+    db = SessionLocal()
+    try:
+        user = db.query(User).filter(User.id == user_id).first()
+        if not user:
+            raise HTTPException(status_code=401, detail="User not found")
+        import jwt as pyjwt
+        from datetime import datetime as _dt, timedelta, UTC
+        long_token = pyjwt.encode(
+            {"sub": str(user.id), "github_login": user.github_login,
+             "exp": _dt.now(UTC) + timedelta(days=30)},
+            os.environ.get("JWT_SECRET", "swarmgrid-dev-secret-change-me"),
+            algorithm="HS256",
+        )
+        return {"api_key": long_token, "expires_in_days": 30}
+    finally:
+        db.close()
+
+
 @app.get("/api/auth/me")
 async def me(request: Request):
     """Return current user from JWT cookie or header."""
