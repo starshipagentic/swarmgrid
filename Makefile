@@ -1,4 +1,4 @@
-.PHONY: help test test-api test-browser heartbeat heartbeat-once start stop status deploy build-app
+.PHONY: help test test-api test-browser heartbeat heartbeat-once start stop status logs deploy build-app
 
 help: ## Show this help
 	@echo "SwarmGrid — AI Agent Swarm Orchestrator"
@@ -6,6 +6,7 @@ help: ## Show this help
 	@echo "Quick start:"
 	@echo "  make start     Start background heartbeat (polls Jira every 4min)"
 	@echo "  make status    Show current state and cloud routes"
+	@echo "  make logs      Watch heartbeat output live"
 	@echo "  make stop      Stop background heartbeat"
 	@echo ""
 	@echo "Testing:"
@@ -47,7 +48,11 @@ stop:
 
 # Show current status
 status:
-	.venv/bin/swarmgrid status | python3 -m json.tool
+	.venv/bin/swarmgrid status
+
+# Watch heartbeat output live
+logs:
+	tmux attach -t swarmgrid-heartbeat
 
 # Deploy to Fly.io
 deploy:
