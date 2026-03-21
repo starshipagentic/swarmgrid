@@ -21,13 +21,75 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, RedirectResponse
 
 from .auth import create_jwt, github_callback, github_login_url, upsert_user
-from .db import create_tables
+from .db import create_tables, SessionLocal, Template
 from . import api_boards, api_teams, api_templates, api_edge, ws
+
+
+GLOBAL_TEMPLATES = [
+    {
+        "name": "/solve",
+        "description": "General-purpose bug/task solver — reads the codebase, implements the fix, runs tests.",
+        "prompt_template": "Solve ticket {issue_key}: {summary}. Read the codebase, implement the fix, run tests.",
+        "recommended_transition_on_launch": "In Progress",
+        "recommended_transition_on_success": "Review",
+        "recommended_transition_on_failure": "Blocked",
+    },
+    {
+        "name": "/prd2epic",
+        "description": "Convert a PRD document into an Epic with Stories and acceptance criteria.",
+        "prompt_template": "Convert the PRD in {issue_key} into an Epic. Break it into Stories with clear acceptance criteria and estimates.",
+        "recommended_transition_on_success": "Review",
+    },
+    {
+        "name": "/epic2stories",
+        "description": "Break an Epic into implementable Stories with subtasks.",
+        "prompt_template": "Break Epic {issue_key}: {summary} into Stories. Each Story should be independently implementable with subtasks, AC, and estimates.",
+        "recommended_transition_on_success": "Review",
+    },
+    {
+        "name": "/testgen",
+        "description": "Generate comprehensive tests for uncovered code changes.",
+        "prompt_template": "Generate comprehensive tests for the changes described in {issue_key}: {summary}. Cover edge cases, error paths, and integration scenarios.",
+        "recommended_transition_on_success": "Review",
+    },
+    {
+        "name": "/migrate",
+        "description": "Implement database migration from a ticket description.",
+        "prompt_template": "Implement the database migration described in {issue_key}: {summary}. Generate migration files, update models, and verify with tests.",
+        "recommended_transition_on_launch": "In Progress",
+        "recommended_transition_on_success": "Review",
+        "recommended_transition_on_failure": "Blocked",
+    },
+]
+
+
+def _seed_global_templates():
+    """Insert global templates if they don't already exist."""
+    db = SessionLocal()
+    try:
+        existing = {t.name for t in db.query(Template).filter(
+            Template.team_id.is_(None), Template.board_id.is_(None)
+        ).all()}
+        for tpl in GLOBAL_TEMPLATES:
+            if tpl["name"] not in existing:
+                db.add(Template(
+                    name=tpl["name"],
+                    description=tpl.get("description", ""),
+                    prompt_template=tpl.get("prompt_template", ""),
+                    recommended_transition_on_launch=tpl.get("recommended_transition_on_launch"),
+                    recommended_transition_on_success=tpl.get("recommended_transition_on_success"),
+                    recommended_transition_on_failure=tpl.get("recommended_transition_on_failure"),
+                    created_by=None,  # system-seeded
+                ))
+        db.commit()
+    finally:
+        db.close()
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     create_tables()
+    _seed_global_templates()
     yield
 
 

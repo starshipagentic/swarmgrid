@@ -46,6 +46,7 @@ class RouteCreate(BaseModel):
 
 
 class RouteUpdate(BaseModel):
+    action: str | None = None
     prompt_template: str | None = None
     transition_on_launch: str | None = None
     transition_on_success: str | None = None
@@ -238,6 +239,7 @@ async def board_snapshot(board_id: int, user: User = Depends(get_current_user)):
                 col_issues = [i for i in jira_issues if i.get("status") in col_statuses]
                 route = next((r for r in routes if r.status == col_name), None)
                 columns.append({
+                    "name": col_name,
                     "status": col_name,
                     "count": len(col_issues),
                     "armed": route.enabled if route else False,
@@ -254,7 +256,7 @@ async def board_snapshot(board_id: int, user: User = Depends(get_current_user)):
                 })
         else:
             for route in routes:
-                columns.append({"status": route.status, "count": 0, "armed": route.enabled, "tickets": []})
+                columns.append({"name": route.status, "status": route.status, "count": 0, "armed": route.enabled, "tickets": []})
 
         return {
             "board": _board_to_dict(board),

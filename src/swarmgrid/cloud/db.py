@@ -148,7 +148,7 @@ class Template(Base):
     recommended_transition_on_launch = Column(String(100), nullable=True)
     recommended_transition_on_success = Column(String(100), nullable=True)
     recommended_transition_on_failure = Column(String(100), nullable=True)
-    created_by = Column(Integer, ForeignKey("users.id"), nullable=False)
+    created_by = Column(Integer, ForeignKey("users.id"), nullable=True)  # null = system-seeded
     created_at = Column(DateTime, default=utc_now)
     updated_at = Column(DateTime, default=utc_now, onupdate=utc_now)
 

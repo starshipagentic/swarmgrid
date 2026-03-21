@@ -11,4 +11,7 @@ board-routes.yaml
 boards/
 *.jira-map.yaml
 dist/
+build/
+*.spec
+_menubar_setup.py
 .env
