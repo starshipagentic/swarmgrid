@@ -38,9 +38,12 @@ def run_heartbeat_loop(
         stop_event: threading.Event or similar — loop exits when set
     """
     config = load_config(config_path)
-    interval = poll_interval or int(config.poll_interval_minutes * 60)
-    if interval < 10:
-        interval = DEFAULT_POLL_INTERVAL
+    if poll_interval is not None:
+        interval = max(5, poll_interval)  # explicit override — allow as low as 5s
+    else:
+        interval = int(config.poll_interval_minutes * 60)
+        if interval < 10:
+            interval = DEFAULT_POLL_INTERVAL
 
     logger.info("Heartbeat loop starting (interval=%ds, config=%s)", interval, config_path)
 
