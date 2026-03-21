@@ -41,6 +41,11 @@ def build_parser() -> argparse.ArgumentParser:
         default=None,
         help="Poll interval in seconds (default: from config, typically 240s).",
     )
+    heartbeat_parser.add_argument(
+        "--background",
+        action="store_true",
+        help="Run heartbeat in a background tmux session (survives terminal close).",
+    )
     subparsers.add_parser(
         "status",
         parents=[common],
@@ -168,9 +173,30 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.command == "heartbeat":
         import logging
+        import shutil
+        import subprocess
         from .agent.heartbeat import run_heartbeat_loop
         import signal
         import threading
+
+        config_paths = _collect_config_paths(args)
+
+        # Background mode — launch in tmux
+        if args.background:
+            if not shutil.which("tmux"):
+                print("Error: tmux required for --background mode")
+                return 1
+            session_name = "swarmgrid-heartbeat"
+            subprocess.run(["tmux", "kill-session", "-t", session_name], check=False, capture_output=True)
+            interval_flag = f" --interval {args.interval}" if args.interval else ""
+            cmd = f"{sys.executable} -m swarmgrid heartbeat --config {config_paths[0]}{interval_flag}"
+            subprocess.run([
+                "tmux", "new-session", "-d", "-s", session_name, cmd
+            ], check=True)
+            print(f"Heartbeat running in background (tmux session: {session_name})")
+            print(f"  Attach: tmux attach -t {session_name}")
+            print(f"  Stop:   tmux kill-session -t {session_name}")
+            return 0
 
         logging.basicConfig(
             level=logging.INFO,
@@ -178,7 +204,6 @@ def main(argv: list[str] | None = None) -> int:
             datefmt="%H:%M:%S",
         )
 
-        config_paths = _collect_config_paths(args)
         stop_event = threading.Event()
 
         def _handle_signal(sig, frame):
