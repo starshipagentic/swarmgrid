@@ -220,6 +220,35 @@ def run_heartbeat(config_path: str | Path, force_reconsider: bool = False) -> di
     launches = launch_planned_decisions(config, store, decisions)
     reconciled = reconcile_runs(config, store)
 
+    # Report completed sessions to cloud (best-effort)
+    try:
+        from .cloud_config import _api_key, _resolve_cloud_board_id, _cloud_base_url, _cloud_get
+        import urllib.request
+        import json as _json
+        api_key = _api_key()
+        if api_key and reconciled:
+            cloud_board_id = _resolve_cloud_board_id(api_key, config.board_id) if config.board_id else None
+            if cloud_board_id:
+                base = _cloud_base_url()
+                for r in reconciled:
+                    try:
+                        body = _json.dumps({
+                            "session_id": f"heartbeat-{r.issue_key}-{r.run_id}",
+                            "result": "success" if r.state == "succeeded" else "failed",
+                            "output": f"State: {r.state}. Proofs: {', '.join(r.proof_files) if r.proof_files else 'none'}",
+                        }).encode()
+                        req = urllib.request.Request(
+                            f"{base}/api/edge/completed",
+                            data=body,
+                            headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
+                            method="POST",
+                        )
+                        urllib.request.urlopen(req, timeout=10)
+                    except Exception:
+                        pass
+    except Exception as exc:
+        logger.debug("Cloud session report failed (non-fatal): %s", exc)
+
     # Fetch changelogs for active sessions (fault-tolerant)
     try:
         _fetch_changelogs(config, store)
