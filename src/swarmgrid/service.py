@@ -8,6 +8,7 @@ from datetime import datetime, UTC
 from pathlib import Path
 
 from .board_map import transition_id_for_status
+from .cloud_config import fetch_cloud_routes
 from .config import AppConfig, load_config
 from .jira import JiraClient
 from .models import JiraIssue, LaunchRecord, RouteDecision, RunReconciliation
@@ -188,8 +189,22 @@ def _fetch_changelogs(config: AppConfig, store: StateStore) -> None:
             logger.warning("Changelog fetch failed for %s: %s", issue_key, exc)
 
 
+def _with_routes(config: AppConfig, routes: list) -> AppConfig:
+    """Return a shallow copy of config with replaced routes."""
+    from dataclasses import fields
+    kwargs = {f.name: getattr(config, f.name) for f in fields(config)}
+    kwargs["routes"] = routes
+    return AppConfig(**kwargs)
+
+
 def run_heartbeat(config_path: str | Path, force_reconsider: bool = False) -> dict:
     config = load_config(config_path)
+
+    # Overlay cloud routes when available (YAML is the fallback)
+    cloud_routes = fetch_cloud_routes(config)
+    if cloud_routes is not None:
+        config = _with_routes(config, cloud_routes)
+
     store = StateStore(config.local_state_dir)
 
     started_at = utc_now()
