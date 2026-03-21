@@ -738,8 +738,8 @@
     function renderRouteEditor(status, route, columnNames, routeList) {
       const area = document.getElementById('route-editor-area');
       const isNew = !route;
-      const colOptions = columnNames.map(n => `<option value="${esc(n)}"${route && route.on_success === n ? ' selected' : ''}>${esc(n)}</option>`).join('');
-      const colOptionsFail = columnNames.map(n => `<option value="${esc(n)}"${route && route.on_failure === n ? ' selected' : ''}>${esc(n)}</option>`).join('');
+      const colOptions = columnNames.map(n => `<option value="${esc(n)}"${route && route.transition_on_success === n ? ' selected' : ''}>${esc(n)}</option>`).join('');
+      const colOptionsFail = columnNames.map(n => `<option value="${esc(n)}"${route && route.transition_on_failure === n ? ' selected' : ''}>${esc(n)}</option>`).join('');
       const enabled = route ? route.enabled !== false : true;
 
       area.innerHTML = `
@@ -747,13 +747,15 @@
           <label>Trigger Column</label>
           <input type="text" id="re-status" value="${esc(isNew ? '' : status)}" ${isNew ? '' : 'readonly'} placeholder="Column name">
           <label>Command Template</label>
-          <input type="text" id="re-command" value="${esc(route ? route.command || '' : '')}" placeholder="/solve">
+          <input type="text" id="re-command" value="${esc(route ? route.action || '' : '')}" placeholder="/solve">
           <label>Prompt Template</label>
-          <textarea id="re-prompt" placeholder="Solve ticket {issue_key}: {summary}.">${esc(route ? route.prompt || '' : '')}</textarea>
+          <textarea id="re-prompt" placeholder="Solve ticket {issue_key}: {summary}.">${esc(route ? route.prompt_template || '' : '')}</textarea>
+          <label>On Launch: move to</label>
+          <select id="re-launch"><option value="">(no transition)</option>${columnNames.map(n => `<option value="${esc(n)}"${route && route.transition_on_launch === n ? ' selected' : ''}>${esc(n)}</option>`).join('')}</select>
           <label>On Success: move to</label>
-          <select id="re-success">${colOptions}</select>
+          <select id="re-success"><option value="">(no transition)</option>${colOptions}</select>
           <label>On Failure: move to</label>
-          <select id="re-failure">${colOptionsFail}</select>
+          <select id="re-failure"><option value="">(no transition)</option>${colOptionsFail}</select>
           <div class="form-actions">
             <button class="btn-save" id="re-save">${isNew ? 'Create Route' : 'Save Route'}</button>
             ${!isNew ? '<button class="btn-cancel" id="re-toggle">' + (enabled ? 'Disable' : 'Enable') + '</button>' : ''}
@@ -762,16 +764,22 @@
         </div>`;
 
       document.getElementById('re-save').addEventListener('click', async () => {
-        const body = {
-          status: document.getElementById('re-status').value,
-          command: document.getElementById('re-command').value,
-          prompt: document.getElementById('re-prompt').value,
-          on_success: document.getElementById('re-success').value,
-          on_failure: document.getElementById('re-failure').value,
-        };
         if (isNew) {
+          const body = {
+            status: document.getElementById('re-status').value,
+            action: document.getElementById('re-command').value || 'claude_default',
+            prompt_template: document.getElementById('re-prompt').value,
+            enabled: true,
+          };
           await api(`/api/boards/${currentBoardId}/routes`, { method: 'POST', body: JSON.stringify(body) });
         } else {
+          const body = {
+            action: document.getElementById('re-command').value || 'claude_default',
+            prompt_template: document.getElementById('re-prompt').value,
+            transition_on_launch: document.getElementById('re-launch').value || null,
+            transition_on_success: document.getElementById('re-success').value || null,
+            transition_on_failure: document.getElementById('re-failure').value || null,
+          };
           await api(`/api/boards/${currentBoardId}/routes/${encodeURIComponent(status)}`, { method: 'PUT', body: JSON.stringify(body) });
         }
         loadRoutes();
@@ -935,12 +943,19 @@
       el.innerHTML = html;
 
       document.getElementById('tpl-create-btn').addEventListener('click', async () => {
+        const scope = document.getElementById('tpl-scope').value;
         const body = {
           name: document.getElementById('tpl-name').value,
           description: document.getElementById('tpl-desc').value,
-          prompt: document.getElementById('tpl-prompt').value,
-          scope: document.getElementById('tpl-scope').value,
+          prompt_template: document.getElementById('tpl-prompt').value,
         };
+        // Set team_id or board_id based on scope (requires a connected board)
+        if (scope === 'project' && currentBoardId) body.board_id = parseInt(currentBoardId);
+        // team scope: grab team_id from current board's data
+        if (scope === 'team' && boards.length) {
+          const b = boards.find(x => String(x.id) === String(currentBoardId));
+          if (b && b.team_id) body.team_id = b.team_id;
+        }
         await api('/api/templates', { method: 'POST', body: JSON.stringify(body) });
         loadTemplates();
       });
@@ -952,7 +967,7 @@
     }
 
     window.viewTemplate = function(id) {
-      const t = allTemplates.find(x => (x.id || x.name) === id);
+      const t = allTemplates.find(x => String(x.id) === String(id));
       if (!t) return;
       const area = document.getElementById('templates-content');
       const existing = document.getElementById('tpl-view-overlay');
@@ -961,26 +976,42 @@
       div.id = 'tpl-view-overlay';
       div.className = 'route-editor';
       div.style.marginTop = '16px';
-      div.innerHTML = `<label>Name</label><input value="${esc(t.name)}" readonly><label>Description</label><input value="${esc(t.description)}" readonly><label>Prompt</label><textarea readonly>${esc(t.prompt || '')}</textarea><div class="form-actions"><button class="btn-cancel" onclick="this.closest('#tpl-view-overlay').remove()">Close</button></div>`;
+      div.innerHTML = `<label>Name</label><input value="${esc(t.name)}" readonly><label>Description</label><input value="${esc(t.description)}" readonly><label>Prompt</label><textarea readonly>${esc(t.prompt_template || '')}</textarea><div class="form-actions"><button class="btn-cancel" onclick="this.closest('#tpl-view-overlay').remove()">Close</button></div>`;
       area.appendChild(div);
     };
 
-    window.editTemplate = async function(id) {
-      const t = allTemplates.find(x => (x.id || x.name) === id);
+    window.editTemplate = function(id) {
+      const t = allTemplates.find(x => String(x.id) === String(id));
       if (!t) return;
-      const newDesc = prompt('Description:', t.description);
-      if (newDesc === null) return;
-      const newPrompt = prompt('Prompt:', t.prompt || '');
-      if (newPrompt === null) return;
-      await api(`/api/templates/${encodeURIComponent(id)}`, {
-        method: 'PUT',
-        body: JSON.stringify({ description: newDesc, prompt: newPrompt }),
+      const area = document.getElementById('templates-content');
+      const existing = document.getElementById('tpl-edit-overlay');
+      if (existing) existing.remove();
+      const div = document.createElement('div');
+      div.id = 'tpl-edit-overlay';
+      div.className = 'route-editor';
+      div.style.marginTop = '16px';
+      div.innerHTML = `
+        <label>Name</label><input value="${esc(t.name)}" readonly>
+        <label>Description</label><input id="tpl-edit-desc" value="${esc(t.description)}">
+        <label>Prompt</label><textarea id="tpl-edit-prompt">${esc(t.prompt_template || '')}</textarea>
+        <div class="form-actions">
+          <button class="btn-save" id="tpl-edit-save">Save</button>
+          <button class="btn-cancel" onclick="this.closest('#tpl-edit-overlay').remove()">Cancel</button>
+        </div>`;
+      area.appendChild(div);
+      document.getElementById('tpl-edit-save').addEventListener('click', async () => {
+        await api('/api/templates/' + encodeURIComponent(id), {
+          method: 'PUT',
+          body: JSON.stringify({
+            description: document.getElementById('tpl-edit-desc').value,
+            prompt_template: document.getElementById('tpl-edit-prompt').value,
+          }),
+        });
+        loadTemplates();
       });
-      loadTemplates();
     };
 
     window.deleteTemplate = async function(id) {
-      if (!confirm('Delete this template?')) return;
       await api(`/api/templates/${encodeURIComponent(id)}`, { method: 'DELETE' });
       loadTemplates();
     };
