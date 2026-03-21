@@ -250,6 +250,26 @@ def main(argv: list[str] | None = None) -> int:
             result["config_path"] = cfg_path
             results.append(result)
         output = results[0] if len(results) == 1 else results
+        # Print human-readable summary
+        if isinstance(output, dict):
+            daemon = output.get("heartbeat_daemon", "unknown")
+            source = output.get("route_source", "yaml")
+            statuses = output.get("watched_statuses", [])
+            running = output.get("running_count", 0)
+            routes = output.get("routes", [])
+            print(f"SwarmGrid Status")
+            print(f"  Heartbeat daemon: {daemon}")
+            print(f"  Route source: {source}")
+            print(f"  Watching: {', '.join(statuses) if statuses else '(none)'}")
+            print(f"  Running sessions: {running}")
+            if routes:
+                print(f"  Routes:")
+                for r in routes:
+                    armed = "Armed" if r.get("enabled") else "Off"
+                    print(f"    {r['status']} -> {r['action']} [{armed}]")
+                    if r.get("transition_on_launch"):
+                        print(f"      Launch:{r['transition_on_launch']} Success:{r.get('transition_on_success','—')} Fail:{r.get('transition_on_failure','—')}")
+            print()
         print(json.dumps(output, indent=2))
         return 0
 
