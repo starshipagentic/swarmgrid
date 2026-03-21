@@ -242,6 +242,9 @@ async def board_snapshot(board_id: int, user: User = Depends(get_current_user)):
                 col_statuses = set(col.get("statuses", [col_name]))
                 col_issues = [i for i in jira_issues if i.get("status") in col_statuses]
                 route = next((r for r in routes if r.status == col_name), None)
+                # Build set of ticket keys with active sessions
+                active_sessions = {s.ticket_key: s.state for s in sessions if s.state in ("pending", "launching", "running")}
+
                 columns.append({
                     "name": col_name,
                     "status": col_name,
@@ -254,6 +257,7 @@ async def board_snapshot(board_id: int, user: User = Depends(get_current_user)):
                             "status_name": i.get("status", ""),
                             "assignee": i.get("assignee"),
                             "issue_type": i.get("issue_type", ""),
+                            "agent_status": active_sessions.get(i["key"]),
                         }
                         for i in col_issues
                     ],
