@@ -423,6 +423,17 @@ class TestCLICommands:
         assert droid["enabled"] is True
         assert droid["transition_on_launch"] == "In Progress"
 
+    def test_stop_command(self):
+        """swarmgrid stop should work without error."""
+        import subprocess as _sp
+        result = _sp.run(
+            [".venv/bin/swarmgrid", "stop"],
+            cwd="/Users/t/clients/swarmgrid",
+            capture_output=True, text=True, timeout=10,
+        )
+        assert result.returncode == 0
+        assert "stopped" in result.stdout.lower() or "no heartbeat" in result.stdout.lower()
+
     def test_heartbeat_once_runs(self):
         """heartbeat-once should complete and use cloud routes."""
         import subprocess as _sp
