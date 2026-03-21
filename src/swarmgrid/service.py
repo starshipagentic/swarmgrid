@@ -319,6 +319,21 @@ def get_status(config_path: str | Path) -> dict:
     )
     summary["heartbeat_daemon"] = "running" if hb_check.returncode == 0 else "stopped"
 
+    # Last heartbeat tick
+    try:
+        with store._connection() as conn:
+            row = conn.execute(
+                "SELECT started_at, issue_count, launched_count FROM heartbeat_ticks ORDER BY rowid DESC LIMIT 1"
+            ).fetchone()
+            if row:
+                summary["last_tick"] = {
+                    "at": row[0],
+                    "issues": row[1],
+                    "launched": row[2],
+                }
+    except Exception:
+        pass
+
     return summary
 
 

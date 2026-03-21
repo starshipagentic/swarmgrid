@@ -262,6 +262,9 @@ def main(argv: list[str] | None = None) -> int:
             print(f"  Route source: {source}")
             print(f"  Watching: {', '.join(statuses) if statuses else '(none)'}")
             print(f"  Running sessions: {running}")
+            last_tick = output.get("last_tick")
+            if last_tick:
+                print(f"  Last tick: {last_tick['at']} ({last_tick['issues']} issues, {last_tick['launched']} launched)")
             if routes:
                 print(f"  Routes:")
                 for r in routes:
