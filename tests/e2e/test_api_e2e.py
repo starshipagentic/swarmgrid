@@ -442,6 +442,16 @@ class TestCLICommands:
         assert "Heartbeat daemon" in header
         assert "Route source: cloud" in header
 
+    def test_version_flag(self):
+        import subprocess as _sp
+        result = _sp.run(
+            [".venv/bin/swarmgrid", "--version"],
+            cwd="/Users/t/clients/swarmgrid",
+            capture_output=True, text=True, timeout=5,
+        )
+        assert result.returncode == 0
+        assert "1.1.0" in result.stdout
+
     def test_stop_command(self):
         """swarmgrid stop should work without error. Restarts heartbeat if it was running."""
         import subprocess as _sp
