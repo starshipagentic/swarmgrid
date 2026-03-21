@@ -581,16 +581,25 @@
     async function api(path, options = {}) {
       const token = document.cookie.split(';').find(c => c.trim().startsWith('sg_token='));
       const jwt = token ? token.split('=')[1].trim() : '';
-      const res = await fetch(API + path, {
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': 'Bearer ' + jwt,
-        },
-        ...options,
-      });
-      if (res.status === 401) { window.location.href = 'login.html'; return null; }
-      if (res.status === 204) return null;
-      return res.json();
+      try {
+        const res = await fetch(API + path, {
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': 'Bearer ' + jwt,
+          },
+          ...options,
+        });
+        if (res.status === 401) { window.location.href = 'login.html'; return null; }
+        if (res.status === 204) return null;
+        if (!res.ok) {
+          console.error(`API ${res.status}: ${path}`);
+          return null;
+        }
+        return res.json();
+      } catch (err) {
+        console.error(`API fetch failed: ${path}`, err);
+        return null;
+      }
     }
 
     // ── Auth bootstrap ─────────────────────────────────────
