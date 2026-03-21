@@ -171,8 +171,19 @@ def main(argv: list[str] | None = None) -> int:
         for cfg_path in config_paths:
             result = run_heartbeat(cfg_path)
             results.append(result)
-        # Single board -> flat output; multi-board -> list
         output = results[0] if len(results) == 1 else results
+        # Print human-readable summary
+        if isinstance(output, dict):
+            issues = output.get("issue_count", 0)
+            launched = output.get("launched_count", 0)
+            statuses = output.get("watched_statuses", [])
+            print(f"Heartbeat tick: {issues} issue{'s' if issues != 1 else ''} in {', '.join(statuses)}, {launched} launched")
+            for d in output.get("decisions", []):
+                if d.get("should_launch"):
+                    print(f"  Launched: {d['issue_key']} ({d['action']})")
+            for r in output.get("reconciled", []):
+                print(f"  Reconciled: {r['issue_key']} -> {r['state']} (transition: {r.get('transition_target', '—')})")
+            print()
         print(json.dumps(output, indent=2))
         return 0
 
