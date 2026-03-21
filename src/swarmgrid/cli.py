@@ -150,9 +150,16 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     if args.command == "heartbeat":
+        import logging
         from .agent.heartbeat import run_heartbeat_loop
         import signal
         import threading
+
+        logging.basicConfig(
+            level=logging.INFO,
+            format="%(asctime)s [%(levelname)s] %(message)s",
+            datefmt="%H:%M:%S",
+        )
 
         config_paths = _collect_config_paths(args)
         stop_event = threading.Event()
@@ -164,7 +171,7 @@ def main(argv: list[str] | None = None) -> int:
         signal.signal(signal.SIGINT, _handle_signal)
         signal.signal(signal.SIGTERM, _handle_signal)
 
-        print(f"Starting heartbeat loop (config: {config_paths[0]})")
+        print(f"SwarmGrid heartbeat starting (config: {config_paths[0]})")
         print("Press Ctrl-C to stop.\n")
         run_heartbeat_loop(
             config_paths[0],
