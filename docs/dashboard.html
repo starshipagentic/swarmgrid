@@ -1103,13 +1103,32 @@
       }
       html += '</div></div>';
 
-      // Install Agent
+      // API Key + Install Agent
       html += `
         <div class="setup-section" id="setup-install">
           <h3>Install Agent</h3>
           <p style="font-size: 13px; color: var(--muted); margin-bottom: 8px;">Run this command on any machine to connect it as an edge node:</p>
           <code class="install-cmd">curl -fsSL https://swarmgrid.org/install | sh</code>
+          <div style="margin-top:16px">
+            <label style="font-size:12px;color:var(--muted);display:block;margin-bottom:4px">API Key (for install script)</label>
+            <div style="display:flex;gap:8px;align-items:center">
+              <input type="text" id="setup-api-key" readonly style="flex:1;opacity:0.7;font-size:11px" placeholder="Click Generate to create an API key">
+              <button class="btn-save" id="setup-gen-key" style="white-space:nowrap">Generate Key</button>
+            </div>
+            <p style="font-size:11px;color:var(--muted);margin-top:4px">Paste this when the install script asks for your API key. Valid for 30 days.</p>
+          </div>
         </div>`;
+
+      // API key generation
+      setTimeout(() => {
+        const genBtn = document.getElementById('setup-gen-key');
+        if (genBtn) genBtn.addEventListener('click', async () => {
+          const data = await api('/api/auth/api-key');
+          if (data && data.api_key) {
+            document.getElementById('setup-api-key').value = data.api_key;
+          }
+        });
+      }, 100);
 
       el.innerHTML = html;
 
