@@ -279,7 +279,10 @@ def main(argv: list[str] | None = None) -> int:
             running = output.get("running_count", 0)
             routes = output.get("routes", [])
             print(f"SwarmGrid Status")
-            print(f"  Heartbeat daemon: {daemon}")
+            if daemon == "stopped":
+                print(f"  Heartbeat daemon: {daemon}  (start with: swarmgrid heartbeat --background)")
+            else:
+                print(f"  Heartbeat daemon: {daemon}")
             print(f"  Route source: {source}")
             print(f"  Watching: {', '.join(statuses) if statuses else '(none)'}")
             print(f"  Running sessions: {running}")
