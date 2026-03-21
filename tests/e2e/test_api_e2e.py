@@ -372,6 +372,39 @@ class TestCloudRoutesMatchYaml:
 class TestTemplateResolution:
     """Verify the template resolution endpoint returns usable prompts."""
 
+class TestHeartbeatCloudIntegration:
+    """Verify cloud routes are consumable by the local heartbeat."""
+
+    def test_cloud_config_module_exists(self):
+        from swarmgrid.cloud_config import fetch_cloud_routes
+        assert callable(fetch_cloud_routes)
+
+    def test_cloud_routes_have_required_fields(self, auth_token, api_url):
+        resp = _api(auth_token, api_url, f"/api/boards/{BOARD_ID}/routes")
+        routes = resp.json()["routes"]
+        for r in routes:
+            assert r.get("status"), "Route missing status"
+            assert r.get("action"), "Route missing action"
+            assert r.get("prompt_template"), f"Route '{r['status']}' has empty prompt_template"
+            assert "enabled" in r
+
+    def test_api_key_endpoint(self, auth_token, api_url):
+        resp = _api(auth_token, api_url, "/api/auth/api-key")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["api_key"].startswith("ey")
+        assert data["expires_in_days"] == 30
+
+    def test_snapshot_includes_agent_status(self, auth_token, api_url):
+        resp = _api(auth_token, api_url, f"/api/boards/{BOARD_ID}/snapshot")
+        assert resp.status_code == 200
+        all_tickets = [t for col in resp.json()["columns"] for t in col.get("tickets", [])]
+        assert len(all_tickets) > 0
+        for t in all_tickets:
+            assert "agent_status" in t, f"Ticket {t['key']} missing agent_status field"
+
+
+class TestTemplateResolution:
     def test_resolve_solve_template(self, auth_token, api_url):
         resp = _api(auth_token, api_url, f"/api/templates/resolve/{BOARD_ID}//solve")
         assert resp.status_code == 200, f"Template resolve failed: {resp.status_code} {resp.text}"
