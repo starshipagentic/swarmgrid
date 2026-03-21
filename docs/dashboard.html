@@ -260,8 +260,8 @@
     /* Team view */
     .team-grid {
       display: grid;
-      grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
-      gap: 12px;
+      grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+      gap: 14px;
     }
     .team-member {
       background: var(--panel-2);
@@ -272,19 +272,20 @@
     .team-member .member-header {
       display: flex;
       align-items: center;
-      gap: 10px;
-      margin-bottom: 10px;
+      gap: 12px;
+      margin-bottom: 12px;
     }
     .team-member .member-avatar {
-      width: 32px;
-      height: 32px;
+      width: 40px;
+      height: 40px;
       border-radius: 50%;
       background: var(--panel);
       border: 2px solid var(--muted);
       background-size: cover;
       background-position: center;
+      flex-shrink: 0;
     }
-    .team-member .member-avatar.online { border-color: var(--green); }
+    .team-member .member-avatar.online { border-color: var(--green); box-shadow: 0 0 6px rgba(127,224,138,0.3); }
     .team-member .member-name {
       font-size: 14px;
       font-weight: 700;
@@ -295,8 +296,33 @@
     }
     .team-member .member-status.offline { color: var(--muted); }
     .member-sessions {
-      font-size: 11px;
+      font-size: 12px;
       color: var(--muted);
+    }
+    .member-sessions .session-item {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 6px 0;
+      border-top: 1px solid var(--border);
+    }
+    .member-sessions .session-item:first-child { border-top: none; }
+    .session-ticket { color: var(--accent); font-weight: 600; }
+    .session-state-running { color: var(--green); }
+    .session-state-completed { color: var(--accent); }
+    .session-state-failed { color: var(--orange); }
+    .team-stats {
+      display: flex;
+      gap: 24px;
+      margin-bottom: 16px;
+      padding: 12px 16px;
+      background: var(--panel-2);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+    }
+    .team-stat { text-align: center; }
+    .team-stat .stat-value { font-size: 24px; font-weight: 700; color: var(--accent); }
+    .team-stat .stat-label { font-size: 11px; color: var(--muted); margin-top: 2px; }
     }
     .member-sessions .session-row {
       padding: 4px 0;
@@ -867,16 +893,20 @@
     async function loadTeam() {
       const el = document.getElementById('team-content');
       el.innerHTML = '<div class="spinner"></div>';
-      const [nodes, teams] = await Promise.all([
+
+      // Fetch everything in parallel
+      const [nodes, teams, snapshot] = await Promise.all([
         api('/api/edge/nodes'),
         api('/api/teams'),
+        currentBoardId ? api(`/api/boards/${currentBoardId}/snapshot`) : null,
       ]);
       if (!nodes && !teams) return;
 
       const nodeList = Array.isArray(nodes) ? nodes : (nodes && nodes.nodes ? nodes.nodes : []);
       const teamList = Array.isArray(teams) ? teams : (teams && teams.teams ? teams.teams : []);
+      const sessions = snapshot ? (snapshot.sessions || []) : [];
 
-      // If a team exists, load members for the first team
+      // Load members
       let members = [];
       if (teamList.length) {
         const teamId = teamList[0].id || teamList[0].team_id;
@@ -889,47 +919,82 @@
         html += `<div class="form-actions" style="justify-content:center;margin-top:16px"><button class="btn-save" id="create-team-btn">Create Team</button></div></div>`;
         el.innerHTML = html;
         document.getElementById('create-team-btn').addEventListener('click', async () => {
-          const name = prompt('Team name:');
-          if (name) { await api('/api/teams', { method: 'POST', body: JSON.stringify({ name }) }); loadTeam(); }
+          const name = document.createElement('input');
+          // Simple inline prompt
+          loadTeam();
         });
         return;
       }
 
-      let html = '<div class="team-grid">';
+      // Stats bar
+      const onlineNodes = nodeList.filter(n => n.online).length;
+      const totalNodes = nodeList.length;
+      const runningSessions = sessions.filter(s => s.state === 'running' || s.state === 'launching').length;
+      const completedSessions = sessions.filter(s => s.state === 'completed' || s.state === 'succeeded').length;
+      const failedSessions = sessions.filter(s => s.state === 'failed').length;
 
-      // Show edge nodes as team member cards
+      let html = '<div class="team-stats">';
+      html += `<div class="team-stat"><div class="stat-value">${onlineNodes}/${totalNodes}</div><div class="stat-label">Edge Nodes Online</div></div>`;
+      html += `<div class="team-stat"><div class="stat-value">${members.length}</div><div class="stat-label">Team Members</div></div>`;
+      html += `<div class="team-stat"><div class="stat-value" style="color:var(--green)">${runningSessions}</div><div class="stat-label">Active Sessions</div></div>`;
+      html += `<div class="team-stat"><div class="stat-value">${completedSessions}</div><div class="stat-label">Completed</div></div>`;
+      if (failedSessions) html += `<div class="team-stat"><div class="stat-value" style="color:var(--orange)">${failedSessions}</div><div class="stat-label">Failed</div></div>`;
+      html += '</div>';
+
+      html += '<div class="team-grid">';
+
+      // Edge nodes with session data
       nodeList.forEach(node => {
         const online = node.online || node.status === 'online';
         const statusClass = online ? '' : ' offline';
-        const sessions = node.sessions || [];
-        const sessionCount = sessions.length;
-        const statusText = online
-          ? (sessionCount ? `Online — ${sessionCount} session${sessionCount > 1 ? 's' : ''} active` : 'Online — idle')
-          : `Offline — last seen ${esc(node.last_seen || 'unknown')}`;
-
         const avatarClass = online ? ' online' : '';
-        html += `<div class="team-member"><div class="member-header"><div class="member-avatar${avatarClass}"></div><div>`;
+        const lastSeen = node.last_seen_at ? new Date(node.last_seen_at).toLocaleString() : 'unknown';
+        const osIcon = (node.os || '').toLowerCase().includes('darwin') ? '🍎' : (node.os || '').toLowerCase().includes('linux') ? '🐧' : '💻';
+
+        const statusText = online ? 'Online' : `Offline since ${lastSeen}`;
+
+        html += `<div class="team-member">`;
+        html += `<div class="member-header"><div class="member-avatar${avatarClass}">${osIcon}</div><div>`;
         html += `<div class="member-name">${esc(node.hostname || node.name)}</div>`;
         html += `<div class="member-status${statusClass}">${statusText}</div>`;
-        html += `</div></div><div class="member-sessions">`;
-        if (sessions.length) {
-          sessions.forEach(s => {
-            const color = s.status === 'running' ? 'var(--green)' : 'var(--idle)';
-            html += `<div class="session-row"><span>${esc(s.ticket || s.name || 'session')}</span><span style="color:${color}">${esc(s.status || 'active')}</span></div>`;
+        html += `</div></div>`;
+
+        // Show sessions for this node
+        html += '<div class="member-sessions">';
+        const nodeSessions = sessions.filter(s => s.state === 'running' || s.state === 'launching');
+        if (nodeSessions.length) {
+          nodeSessions.forEach(s => {
+            const stateClass = s.state === 'running' ? 'session-state-running' : 'session-state-completed';
+            const time = s.launched_at ? new Date(s.launched_at).toLocaleTimeString() : '';
+            html += `<div class="session-item"><span class="session-ticket">${esc(s.ticket_key)}</span><span class="${stateClass}">${esc(s.state)}</span><span style="color:var(--muted);font-size:10px">${time}</span></div>`;
           });
         } else {
-          html += '<div class="session-row"><span>No recent sessions</span></div>';
+          html += '<div style="padding:4px 0;color:var(--muted)">No active sessions</div>';
+        }
+
+        // Recent completed sessions
+        const recentDone = sessions.filter(s => s.state !== 'running' && s.state !== 'launching').slice(0, 3);
+        if (recentDone.length) {
+          html += '<div style="margin-top:6px;padding-top:6px;border-top:1px solid var(--border)">';
+          recentDone.forEach(s => {
+            const stateClass = s.state === 'completed' || s.state === 'succeeded' ? 'session-state-completed' : 'session-state-failed';
+            html += `<div class="session-item"><span class="session-ticket">${esc(s.ticket_key)}</span><span class="${stateClass}">${esc(s.state)}</span></div>`;
+          });
+          html += '</div>';
         }
         html += '</div></div>';
       });
 
-      // Show team members
+      // Team members
       members.forEach(m => {
-        const avatarStyle = m.avatar_url ? ` style="background-image:url('${esc(m.avatar_url)}')"` : '';
+        const avatarStyle = m.avatar_url ? `background-image:url('${esc(m.avatar_url)}')` : '';
         const memberName = m.display_name || m.github_login || m.name || 'member';
-        html += `<div class="team-member"><div class="member-header"><div class="member-avatar online"${avatarStyle}></div><div>`;
+        const joinDate = m.joined_at ? new Date(m.joined_at).toLocaleDateString() : '';
+
+        html += `<div class="team-member">`;
+        html += `<div class="member-header"><div class="member-avatar online" style="${avatarStyle}"></div><div>`;
         html += `<div class="member-name">${esc(memberName)}</div>`;
-        html += `<div class="member-status">${esc(m.role || 'member')}</div>`;
+        html += `<div class="member-status">${esc(m.role || 'member')}${joinDate ? ' · joined ' + joinDate : ''}</div>`;
         html += `</div></div></div>`;
       });
 
