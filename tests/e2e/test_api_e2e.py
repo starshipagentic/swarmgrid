@@ -478,6 +478,38 @@ class TestCLICommands:
         check = _sp.run(["tmux", "has-session", "-t", "swarmgrid-heartbeat"], check=False, capture_output=True)
         assert check.returncode == 0, "Background heartbeat tmux session should be running"
 
+    def test_full_workflow_start_status_stop(self):
+        """Test the complete daily workflow: start → status → stop."""
+        import subprocess as _sp
+        # Ensure stopped first
+        _sp.run([".venv/bin/swarmgrid", "stop"], cwd="/Users/t/clients/swarmgrid", capture_output=True, timeout=5)
+
+        # Start
+        result = _sp.run([".venv/bin/swarmgrid", "heartbeat", "--background"],
+                        cwd="/Users/t/clients/swarmgrid", capture_output=True, text=True, timeout=10)
+        assert result.returncode == 0
+        import time; time.sleep(5)
+
+        # Status should show running
+        result = _sp.run([".venv/bin/swarmgrid", "status"],
+                        cwd="/Users/t/clients/swarmgrid", capture_output=True, text=True, timeout=30)
+        assert "Heartbeat daemon: running" in result.stdout
+        assert "Route source: cloud" in result.stdout
+
+        # Stop
+        result = _sp.run([".venv/bin/swarmgrid", "stop"],
+                        cwd="/Users/t/clients/swarmgrid", capture_output=True, text=True, timeout=5)
+        assert result.returncode == 0
+
+        # Status should show stopped
+        result = _sp.run([".venv/bin/swarmgrid", "status"],
+                        cwd="/Users/t/clients/swarmgrid", capture_output=True, text=True, timeout=30)
+        assert "Heartbeat daemon: stopped" in result.stdout
+
+        # Restart for Travis
+        _sp.run([".venv/bin/swarmgrid", "heartbeat", "--background"],
+                cwd="/Users/t/clients/swarmgrid", capture_output=True, timeout=10)
+
     def test_heartbeat_once_runs(self):
         """heartbeat-once should complete and use cloud routes."""
         import subprocess as _sp
