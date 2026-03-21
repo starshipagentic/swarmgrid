@@ -694,7 +694,10 @@
             : t.agent_status === 'idle'
               ? '<span class="status-dot status-idle"></span>'
               : '';
-          html += `<div class="ticket-card"><div class="ticket-key">${dot}${esc(t.key)}</div><div class="ticket-summary">${esc(t.summary)}</div></div>`;
+          const boardData = data.board || {};
+          const siteUrl = boardData.site_url || '';
+          const ticketUrl = siteUrl ? `${siteUrl}/browse/${t.key}` : '#';
+          html += `<div class="ticket-card" style="cursor:pointer" onclick="window.open('${ticketUrl}','_blank')"><div class="ticket-key">${dot}${esc(t.key)}</div><div class="ticket-summary">${esc(t.summary)}</div></div>`;
         });
         html += '</div>';
         container.insertAdjacentHTML('beforeend', html);
