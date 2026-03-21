@@ -227,6 +227,16 @@ def main(argv: list[str] | None = None) -> int:
             print(f"Heartbeat running in background (tmux session: {session_name})")
             print(f"  Attach: tmux attach -t {session_name}")
             print(f"  Stop:   tmux kill-session -t {session_name}")
+
+            # Register edge node with cloud (best-effort)
+            try:
+                from .agent.registration import register_edge
+                result = register_edge("heartbeat-daemon")
+                if result.get("ok"):
+                    print(f"  Edge registered: {result.get('hostname', 'unknown')}")
+            except Exception:
+                pass
+
             return 0
 
         logging.basicConfig(
