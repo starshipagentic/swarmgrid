@@ -524,7 +524,7 @@
     <main id="view-board" class="page-view">
       <div class="page-header">
         <h2>Board</h2>
-        <p>Live ticket board with agent status indicators.</p>
+        <p>Live ticket board with agent status indicators. <span id="board-refresh-time" style="font-size:11px;color:var(--muted)"></span></p>
       </div>
       <div id="board-content"><div class="spinner"></div></div>
     </main>
@@ -679,6 +679,8 @@
         return;
       }
       el.innerHTML = '<div class="columns" id="columns"></div>';
+      const refreshEl = document.getElementById('board-refresh-time');
+      if (refreshEl) refreshEl.textContent = 'Updated ' + new Date().toLocaleTimeString();
       const container = document.getElementById('columns');
       // Build set of armed columns from routes
       const routes = data.routes || [];
