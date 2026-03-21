@@ -272,6 +272,7 @@ def run_heartbeat(config_path: str | Path, force_reconsider: bool = False) -> di
         "decision_count": len(decisions),
         "launched_count": len(launches),
         "watched_statuses": config.watched_statuses,
+        "route_source": "cloud" if cloud_routes is not None else "yaml",
         "issues": [asdict(issue) for issue in issues],
         "archived": archived,
         "decisions": [asdict(decision) for decision in decisions],
