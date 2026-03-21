@@ -230,10 +230,14 @@ class SwarmGridApp(rumps.App):
                 self._start_agent_thread()
 
     def _view_logs(self, _sender):
-        """Open Terminal.app tailing the agent log."""
+        """Open the agent log file in Console.app or default text viewer."""
         log_path = AGENT_LOG
-        script = f'tell application "Terminal" to do script "tail -f {log_path}"'
-        subprocess.Popen(["osascript", "-e", script])
+        if os.path.exists(log_path):
+            subprocess.Popen(["open", "-a", "Console", log_path])
+        else:
+            # Create empty log so there's something to open
+            Path(log_path).touch()
+            subprocess.Popen(["open", "-a", "Console", log_path])
 
     def _quit(self, _sender):
         """Graceful shutdown."""
