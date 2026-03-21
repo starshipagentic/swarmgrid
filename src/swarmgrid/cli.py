@@ -12,7 +12,11 @@ from .webapp import create_app
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(prog="swarmgrid")
+    parser = argparse.ArgumentParser(
+        prog="swarmgrid",
+        description="AI agent swarm orchestrator for kanban boards",
+    )
+    parser.add_argument("--version", action="version", version="swarmgrid 1.1.0")
     subparsers = parser.add_subparsers(dest="command", required=True)
     common = argparse.ArgumentParser(add_help=False)
     common.add_argument(
