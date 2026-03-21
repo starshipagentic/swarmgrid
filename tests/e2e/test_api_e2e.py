@@ -404,6 +404,26 @@ class TestHeartbeatCloudIntegration:
             assert "agent_status" in t, f"Ticket {t['key']} missing agent_status field"
 
 
+class TestStatusCommand:
+    """Verify the CLI status command reports cloud routes."""
+
+    def test_status_shows_cloud_routes(self):
+        import subprocess as _sp
+        result = _sp.run(
+            [".venv/bin/swarmgrid", "status"],
+            cwd="/Users/t/clients/swarmgrid",
+            capture_output=True, text=True, timeout=30,
+        )
+        import json as _j
+        data = _j.loads(result.stdout)
+        assert data.get("route_source") == "cloud"
+        routes = data.get("routes", [])
+        droid = next((r for r in routes if r["status"] == "Droid-Do"), None)
+        assert droid is not None
+        assert droid["enabled"] is True
+        assert droid["transition_on_launch"] == "In Progress"
+
+
 class TestTemplateResolution:
     def test_resolve_solve_template(self, auth_token, api_url):
         resp = _api(auth_token, api_url, f"/api/templates/resolve/{BOARD_ID}//solve")
