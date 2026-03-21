@@ -127,6 +127,12 @@ class TestTeamTab:
         authed_page.wait_for_timeout(3000)
         expect(authed_page.locator("text=owner")).to_be_visible()
 
+    def test_team_shows_edge_node(self, authed_page: Page):
+        authed_page.click("[data-page='team']")
+        authed_page.wait_for_timeout(3000)
+        team_text = authed_page.locator("#team-content").text_content()
+        assert "MacBook" in team_text or "Online" in team_text
+
 
 class TestSetupTab:
     def test_setup_shows_connected_board(self, authed_page: Page):
@@ -142,6 +148,22 @@ class TestSetupTab:
         authed_page.click("[data-page='setup']")
         authed_page.wait_for_timeout(3000)
         expect(authed_page.locator("text=curl")).to_be_visible()
+
+    def test_generate_api_key_button(self, authed_page: Page):
+        authed_page.click("[data-page='setup']")
+        authed_page.wait_for_selector("#setup-gen-key", timeout=10000)
+        authed_page.wait_for_timeout(1000)  # let setup tab fully render
+        authed_page.click("#setup-gen-key")
+        # Wait for the API call to complete and populate the input
+        authed_page.wait_for_timeout(5000)
+        key_value = authed_page.locator("#setup-api-key").input_value()
+        assert key_value.startswith("ey"), f"API key should be a JWT, got: '{key_value[:30]}'"
+
+    def test_setup_shows_edge_node(self, authed_page: Page):
+        authed_page.click("[data-page='setup']")
+        authed_page.wait_for_timeout(3000)
+        setup_text = authed_page.locator("#setup-content").text_content()
+        assert "MacBook" in setup_text or "Online" in setup_text, "Edge node should be visible"
 
     def test_jira_token_is_masked(self, authed_page: Page):
         authed_page.click("[data-page='setup']")
