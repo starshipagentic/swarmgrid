@@ -280,8 +280,11 @@
       height: 32px;
       border-radius: 50%;
       background: var(--panel);
-      border: 1px solid var(--border);
+      border: 2px solid var(--muted);
+      background-size: cover;
+      background-position: center;
     }
+    .team-member .member-avatar.online { border-color: var(--green); }
     .team-member .member-name {
       font-size: 14px;
       font-weight: 700;
@@ -904,7 +907,8 @@
           ? (sessionCount ? `Online — ${sessionCount} session${sessionCount > 1 ? 's' : ''} active` : 'Online — idle')
           : `Offline — last seen ${esc(node.last_seen || 'unknown')}`;
 
-        html += `<div class="team-member"><div class="member-header"><div class="member-avatar"></div><div>`;
+        const avatarClass = online ? ' online' : '';
+        html += `<div class="team-member"><div class="member-header"><div class="member-avatar${avatarClass}"></div><div>`;
         html += `<div class="member-name">${esc(node.hostname || node.name)}</div>`;
         html += `<div class="member-status${statusClass}">${statusText}</div>`;
         html += `</div></div><div class="member-sessions">`;
@@ -921,8 +925,10 @@
 
       // Show team members
       members.forEach(m => {
-        html += `<div class="team-member"><div class="member-header"><div class="member-avatar"></div><div>`;
-        html += `<div class="member-name">${esc(m.name || m.username)}</div>`;
+        const avatarStyle = m.avatar_url ? ` style="background-image:url('${esc(m.avatar_url)}')"` : '';
+        const memberName = m.display_name || m.github_login || m.name || 'member';
+        html += `<div class="team-member"><div class="member-header"><div class="member-avatar online"${avatarStyle}></div><div>`;
+        html += `<div class="member-name">${esc(memberName)}</div>`;
         html += `<div class="member-status">${esc(m.role || 'member')}</div>`;
         html += `</div></div></div>`;
       });
