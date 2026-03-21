@@ -188,10 +188,13 @@ def main(argv: list[str] | None = None) -> int:
                 return 1
             session_name = "swarmgrid-heartbeat"
             subprocess.run(["tmux", "kill-session", "-t", session_name], check=False, capture_output=True)
+            abs_config = str(Path(config_paths[0]).resolve())
             interval_flag = f" --interval {args.interval}" if args.interval else ""
-            cmd = f"{sys.executable} -m swarmgrid heartbeat --config {config_paths[0]}{interval_flag}"
+            # Use the swarmgrid script (installed alongside python in the venv)
+            sg_bin = str(Path(sys.executable).parent / "swarmgrid")
+            cmd = f"{sg_bin} heartbeat --config {abs_config}{interval_flag}; echo 'Heartbeat stopped.'; sleep 999"
             subprocess.run([
-                "tmux", "new-session", "-d", "-s", session_name, cmd
+                "tmux", "new-session", "-d", "-s", session_name, "-c", str(Path(abs_config).parent), cmd
             ], check=True)
             print(f"Heartbeat running in background (tmux session: {session_name})")
             print(f"  Attach: tmux attach -t {session_name}")
