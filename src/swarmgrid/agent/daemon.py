@@ -60,7 +60,11 @@ def start_agent(
     )
 
     # Find python and build the force-command
-    python_path = sys.executable or shutil.which("python3") or "python3"
+    if getattr(sys, 'frozen', False):
+        # Running from PyInstaller bundle — use system python with installed swarmgrid
+        python_path = shutil.which("python3") or "python3"
+    else:
+        python_path = sys.executable or shutil.which("python3") or "python3"
     force_cmd = f"{python_path} -m swarmgrid.agent.worker"
 
     cmd_parts = [
