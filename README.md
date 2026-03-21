@@ -7,28 +7,33 @@ Works with Jira, and designed to extend to other kanban providers.
 ## Quick Start
 
 ```bash
+# Install
+pip install swarmgrid
+
+# Or clone and set up
 git clone https://github.com/starshipagentic/swarmgrid.git
 cd swarmgrid && ./setup.sh
 ```
 
-After first setup:
+**Daily workflow:**
 ```bash
-swarmgrid
+make start    # Start background heartbeat (polls Jira every 4min)
+make status   # Check what's running
+make stop     # Stop heartbeat
+make test     # Run 61 E2E tests
 ```
 
-Or install from PyPI:
-```bash
-pip install swarmgrid
-```
+**Dashboard:** [swarmgrid.org](https://swarmgrid.org) — sign in with GitHub, connect your Jira board, configure routes.
 
 ## What it does
 
-1. **Heartbeat** — polls your kanban board every few minutes
-2. **Routes** — when a ticket enters a trigger column, launches a Claude agent with your prompt
-3. **Sessions** — each ticket gets its own tmux session, fully isolated
-4. **Dashboard** — web UI at `http://127.0.0.1:8787` with live board, terminal, and team view
-5. **Sharing** — share any session with a teammate over SSH (via upterm)
-6. **Team Hub** — see what everyone is working on across the squad
+1. **Cloud Dashboard** — configure routes and view your board at [swarmgrid.org](https://swarmgrid.org)
+2. **Heartbeat** — polls your kanban board, fetches routes from the cloud
+3. **Routes** — when a ticket enters a trigger column, launches a Claude agent with your prompt
+4. **Transitions** — automatically moves tickets through your workflow (e.g., Droid-Do → In Progress → Review)
+5. **Sessions** — each ticket gets its own tmux session, fully isolated
+6. **Templates** — reusable command library (/solve, /testgen, /migrate, etc.)
+7. **Team visibility** — see who's online, what's running, edge node status
 
 ## The Progression
 
@@ -46,7 +51,7 @@ pip install swarmgrid
 - SQLite (local state + hub)
 - Kanban board API (Jira supported, extensible)
 
-No cloud. No Docker. No servers. Just your laptop.
+Cloud-orchestrated, edge-powered. Your machine does the compute.
 
 ## Links
 
