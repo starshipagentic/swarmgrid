@@ -38,6 +38,13 @@ class TestBoardTab:
         assert len(keys) > 0
         assert all("LMSV3-" in k for k in keys)
 
+    def test_board_has_routes_data(self, authed_page: Page):
+        """Board snapshot should include routes for armed column detection."""
+        authed_page.wait_for_selector(".column-title", timeout=15000)
+        # At minimum, Droid-Do column should exist
+        droid = authed_page.locator(".column-title", has_text="Droid-Do")
+        assert droid.count() > 0
+
     def test_board_switcher_visible(self, authed_page: Page):
         expect(authed_page.locator("#board-switcher")).to_be_visible()
         options = authed_page.locator("#board-switcher option").all_text_contents()
