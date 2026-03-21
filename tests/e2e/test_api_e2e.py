@@ -532,6 +532,7 @@ class TestCLICommands:
         assert "Droid-Do" in data["watched_statuses"]
         assert "issue_count" in data
         assert "launched_count" in data
+        assert data.get("route_source") == "cloud", "heartbeat-once should use cloud routes"
         # Also verify human-readable header
         header = stdout[:json_start]
         assert "Heartbeat tick:" in header
