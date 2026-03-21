@@ -30,6 +30,17 @@ def build_parser() -> argparse.ArgumentParser:
         parents=[common],
         help="Run one Jira polling tick.",
     )
+    heartbeat_parser = subparsers.add_parser(
+        "heartbeat",
+        parents=[common],
+        help="Run the heartbeat loop continuously (polls Jira, launches agents).",
+    )
+    heartbeat_parser.add_argument(
+        "--interval",
+        type=int,
+        default=None,
+        help="Poll interval in seconds (default: from config, typically 240s).",
+    )
     subparsers.add_parser(
         "status",
         parents=[common],
@@ -136,6 +147,30 @@ def main(argv: list[str] | None = None) -> int:
         # Single board -> flat output; multi-board -> list
         output = results[0] if len(results) == 1 else results
         print(json.dumps(output, indent=2))
+        return 0
+
+    if args.command == "heartbeat":
+        from .agent.heartbeat import run_heartbeat_loop
+        import signal
+        import threading
+
+        config_paths = _collect_config_paths(args)
+        stop_event = threading.Event()
+
+        def _handle_signal(sig, frame):
+            print("\nStopping heartbeat...")
+            stop_event.set()
+
+        signal.signal(signal.SIGINT, _handle_signal)
+        signal.signal(signal.SIGTERM, _handle_signal)
+
+        print(f"Starting heartbeat loop (config: {config_paths[0]})")
+        print("Press Ctrl-C to stop.\n")
+        run_heartbeat_loop(
+            config_paths[0],
+            poll_interval=args.interval,
+            stop_event=stop_event,
+        )
         return 0
 
     if args.command == "status":
