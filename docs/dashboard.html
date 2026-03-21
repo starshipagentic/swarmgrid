@@ -729,8 +729,10 @@
           const siteUrl = boardData.site_url || '';
           const ticketUrl = siteUrl ? `${siteUrl}/browse/${t.key}` : '#';
           const hasSession = t.agent_status === 'running' || t.agent_status === 'launching';
+          const ticketSession = sessions.find(s => s.ticket_key === t.key && (s.state === 'running' || s.state === 'launching'));
+          const ticketSessionId = ticketSession ? ticketSession.session_id : '';
           const clickAction = hasSession
-            ? `openSession('${esc(t.key)}','')`
+            ? `openSession('${esc(t.key)}','${esc(ticketSessionId)}')`
             : `window.open('${ticketUrl}','_blank')`;
           const cursorTitle = hasSession ? 'Click to open Claude session' : 'Click to open in Jira';
           html += `<div class="ticket-card" style="cursor:pointer" title="${cursorTitle}" onclick="${clickAction}"><div class="ticket-key">${dot}${esc(t.key)}</div><div class="ticket-summary">${esc(t.summary)}</div></div>`;
@@ -757,22 +759,44 @@
 
     // ── Session opener ──────────────────────────────────────
     async function openSession(ticketKey, sessionId) {
+      // If we don't have sessionId, try to find it from the snapshot
+      if (!sessionId && currentBoardId) {
+        try {
+          const snap = await api(`/api/boards/${currentBoardId}/snapshot`);
+          if (snap && snap.sessions) {
+            const match = snap.sessions.find(s => s.ticket_key === ticketKey && (s.state === 'running' || s.state === 'launching'));
+            if (match) sessionId = match.session_id;
+          }
+        } catch(e) {}
+      }
+
       // Try to open iTerm2 via cloud → SSH → edge CGI command
       const result = await api(`/api/edge/command/${encodeURIComponent(ticketKey)}`, { method: 'POST' });
       if (result && result.ok && result.opened) {
-        // iTerm2 should have opened on the local machine
-        return;
+        return; // iTerm2 opened on local machine
       }
-      // Fallback: show the attach command
-      const cmd = result && result.attach_command ? result.attach_command : `tmux attach -t ${sessionId}`;
+
+      // Build the attach command — use sessionId if we have it, or the CGI response
+      let cmd = '';
+      if (result && result.attach_command) {
+        cmd = result.attach_command;
+      } else if (sessionId) {
+        cmd = `tmux attach -t ${sessionId}`;
+      } else {
+        cmd = `tmux list-sessions | grep ${ticketKey.toLowerCase()}`;
+      }
+
       const overlay = document.createElement('div');
       overlay.className = 'route-editor';
-      overlay.style.cssText = 'position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);z-index:1000;max-width:600px;width:90%;box-shadow:0 8px 32px rgba(0,0,0,0.5)';
+      overlay.style.cssText = 'position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);z-index:1000;max-width:640px;width:90%;box-shadow:0 8px 32px rgba(0,0,0,0.5)';
       overlay.innerHTML = `
-        <label>Attach to session</label>
-        <input type="text" value="${cmd}" readonly onclick="this.select()" style="font-family:monospace;font-size:13px">
-        <p style="font-size:11px;color:var(--muted);margin-top:8px">Paste this in your terminal to see Claude working on ${ticketKey}.</p>
-        <div class="form-actions"><button class="btn-save" onclick="navigator.clipboard.writeText('${cmd}');this.textContent='Copied!'">Copy</button><button class="btn-cancel" onclick="this.closest('.route-editor').remove()">Close</button></div>`;
+        <label>Attach to Claude session for ${esc(ticketKey)}</label>
+        <input type="text" id="attach-cmd" value="${esc(cmd)}" readonly onclick="this.select()" style="font-family:monospace;font-size:13px">
+        <p style="font-size:11px;color:var(--muted);margin-top:8px">Paste this in your terminal to see Claude working.</p>
+        <div class="form-actions">
+          <button class="btn-save" onclick="navigator.clipboard.writeText(document.getElementById('attach-cmd').value);this.textContent='Copied!'">Copy Command</button>
+          <button class="btn-cancel" onclick="this.closest('.route-editor').remove()">Close</button>
+        </div>`;
       document.body.appendChild(overlay);
     }
 
