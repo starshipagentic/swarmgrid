@@ -1,4 +1,21 @@
-.PHONY: test test-api test-browser heartbeat heartbeat-once start stop status deploy build-app
+.PHONY: help test test-api test-browser heartbeat heartbeat-once start stop status deploy build-app
+
+help: ## Show this help
+	@echo "SwarmGrid — AI Agent Swarm Orchestrator"
+	@echo ""
+	@echo "Quick start:"
+	@echo "  make start     Start background heartbeat (polls Jira every 4min)"
+	@echo "  make status    Show current state and cloud routes"
+	@echo "  make stop      Stop background heartbeat"
+	@echo ""
+	@echo "Testing:"
+	@echo "  make test      Run all E2E tests (API + browser)"
+	@echo "  make test-api  Run API tests only (fast)"
+	@echo ""
+	@echo "Other:"
+	@echo "  make deploy    Deploy to Fly.io"
+	@echo "  make build-app Build macOS menu bar app"
+	@echo ""
 
 # Run all E2E tests (API + browser)
 test:
