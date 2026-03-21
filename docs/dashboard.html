@@ -1368,7 +1368,7 @@
       if (!currentUser) return;
       const userMenu = document.getElementById('user-menu');
       const avatar = currentUser.avatar_url || currentUser.avatar || '';
-      const name = currentUser.name || currentUser.login || currentUser.username || 'User';
+      const name = currentUser.display_name || currentUser.github_login || currentUser.name || 'User';
       if (avatar) {
         userMenu.innerHTML = `<img src="${esc(avatar)}" alt="avatar"> <span>${esc(name)}</span>`;
       } else {
