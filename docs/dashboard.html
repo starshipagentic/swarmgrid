@@ -1045,7 +1045,7 @@
       let html = '';
 
       // Connect Board — pre-fill if board already exists
-      const currentBoard = boards.find(b => b.id === currentBoardId) || {};
+      const currentBoard = boards.find(b => String(b.id) === String(currentBoardId)) || {};
       const boardUrl = currentBoard.site_url && currentBoard.project_key && currentBoard.jira_board_id
         ? `${currentBoard.site_url}/jira/software/projects/${currentBoard.project_key}/boards/${currentBoard.jira_board_id}`
         : '';
