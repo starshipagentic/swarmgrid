@@ -17,7 +17,7 @@ from .credential_store import get_credential, CLOUD_API_KEY
 
 logger = logging.getLogger(__name__)
 
-DEFAULT_CLOUD_URL = "https://swarmgrid.org"
+DEFAULT_CLOUD_URL = "https://swarmgrid-api.fly.dev"
 CONFIG_PATH = Path.home() / ".swarmgrid" / "config.yaml"
 
 
