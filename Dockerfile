@@ -14,4 +14,6 @@ RUN mkdir -p /data
 
 EXPOSE 8080
 
+ENV DATABASE_URL="sqlite:////data/swarmgrid.db"
+
 CMD ["python", "-m", "uvicorn", "swarmgrid.cloud.app:app", "--host", "0.0.0.0", "--port", "8080"]
