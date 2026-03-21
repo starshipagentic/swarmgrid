@@ -690,6 +690,21 @@
         html += '</div>';
         container.insertAdjacentHTML('beforeend', html);
       });
+
+      // Show recent sessions below the board
+      const sessions = data.sessions || [];
+      if (sessions.length) {
+        let sessHtml = '<div style="margin-top:16px;border-top:1px solid var(--border);padding-top:12px"><h3 style="font-size:13px;color:var(--muted);margin-bottom:8px">Recent Agent Sessions</h3>';
+        sessHtml += '<table style="width:100%;border-collapse:collapse;font-size:12px">';
+        sessHtml += '<tr style="color:var(--muted);text-align:left;border-bottom:1px solid var(--border)"><th style="padding:4px 8px">Ticket</th><th style="padding:4px 8px">State</th><th style="padding:4px 8px">Launched</th></tr>';
+        sessions.slice(0, 10).forEach(s => {
+          const stateColor = s.state === 'running' ? 'var(--green)' : s.state === 'completed' ? 'var(--accent)' : 'var(--muted)';
+          const time = s.launched_at ? new Date(s.launched_at).toLocaleString() : '—';
+          sessHtml += `<tr style="border-bottom:1px solid var(--border)"><td style="padding:4px 8px">${esc(s.ticket_key)}</td><td style="padding:4px 8px;color:${stateColor}">${esc(s.state)}</td><td style="padding:4px 8px;color:var(--muted)">${time}</td></tr>`;
+        });
+        sessHtml += '</table></div>';
+        el.insertAdjacentHTML('beforeend', sessHtml);
+      }
     }
 
     // Auto-refresh board every 30 seconds when visible
