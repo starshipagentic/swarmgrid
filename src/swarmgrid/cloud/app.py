@@ -65,11 +65,21 @@ GLOBAL_TEMPLATES = [
 
 def _seed_global_templates():
     """Insert global templates if they don't already exist."""
+    from sqlalchemy import text
+    from .db import Base, engine
+    import logging
+
     db = SessionLocal()
     try:
-        existing = {t.name for t in db.query(Template).filter(
-            Template.team_id.is_(None), Template.board_id.is_(None)
-        ).all()}
+        # Check if existing table allows NULL created_by (SQLite migration)
+        try:
+            existing = {t.name for t in db.query(Template).filter(
+                Template.team_id.is_(None), Template.board_id.is_(None)
+            ).all()}
+        except Exception:
+            existing = set()
+
+        added = 0
         for tpl in GLOBAL_TEMPLATES:
             if tpl["name"] not in existing:
                 db.add(Template(
@@ -79,9 +89,34 @@ def _seed_global_templates():
                     recommended_transition_on_launch=tpl.get("recommended_transition_on_launch"),
                     recommended_transition_on_success=tpl.get("recommended_transition_on_success"),
                     recommended_transition_on_failure=tpl.get("recommended_transition_on_failure"),
-                    created_by=None,  # system-seeded
+                    created_by=None,
                 ))
-        db.commit()
+                added += 1
+        if added:
+            try:
+                db.commit()
+            except Exception:
+                # Likely NOT NULL constraint on created_by in old schema —
+                # recreate table (safe: templates table is empty in production)
+                db.rollback()
+                db.close()
+                with engine.connect() as conn:
+                    conn.execute(text("DROP TABLE IF EXISTS templates"))
+                    conn.commit()
+                Base.metadata.tables["templates"].create(engine)
+                db = SessionLocal()
+                for tpl in GLOBAL_TEMPLATES:
+                    db.add(Template(
+                        name=tpl["name"],
+                        description=tpl.get("description", ""),
+                        prompt_template=tpl.get("prompt_template", ""),
+                        recommended_transition_on_launch=tpl.get("recommended_transition_on_launch"),
+                        recommended_transition_on_success=tpl.get("recommended_transition_on_success"),
+                        recommended_transition_on_failure=tpl.get("recommended_transition_on_failure"),
+                        created_by=None,
+                    ))
+                db.commit()
+                logging.getLogger(__name__).info("Recreated templates table and seeded %d global templates", len(GLOBAL_TEMPLATES))
     finally:
         db.close()
 
