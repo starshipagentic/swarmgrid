@@ -7,19 +7,23 @@ Works with Jira, and designed to extend to other kanban providers.
 ## Quick Start
 
 ```bash
+# Install
+pip install swarmgrid
+
+# Or clone and set up
 git clone https://github.com/starshipagentic/swarmgrid.git
 cd swarmgrid && ./setup.sh
 ```
 
-After first setup:
+**Daily workflow:**
 ```bash
-swarmgrid
+make start    # Start background heartbeat (polls Jira every 4min)
+make status   # Check what's running
+make stop     # Stop heartbeat
+make test     # Run 61 E2E tests
 ```
 
-Or install from PyPI:
-```bash
-pip install swarmgrid
-```
+**Dashboard:** [swarmgrid.org](https://swarmgrid.org) — sign in with GitHub, connect your Jira board, configure routes.
 
 ## What it does
 
