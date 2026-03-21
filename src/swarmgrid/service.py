@@ -310,6 +310,15 @@ def get_status(config_path: str | Path) -> dict:
     summary["local_state_dir"] = str(config.local_state_dir)
     summary["recent_runs"] = store.list_recent_process_runs()
     summary["archived_count"] = len(store.list_archived_processes(limit=200))
+
+    # Check if background heartbeat is running
+    import subprocess as _sp
+    hb_check = _sp.run(
+        ["tmux", "has-session", "-t", "swarmgrid-heartbeat"],
+        check=False, capture_output=True,
+    )
+    summary["heartbeat_daemon"] = "running" if hb_check.returncode == 0 else "stopped"
+
     return summary
 
 
