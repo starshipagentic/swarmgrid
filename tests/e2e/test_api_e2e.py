@@ -226,6 +226,11 @@ class TestEdgeAndTeam:
     def test_list_edge_nodes(self, auth_token, api_url):
         resp = _api(auth_token, api_url, "/api/edge/nodes")
         assert resp.status_code == 200
+        nodes = resp.json().get("nodes", [])
+        assert len(nodes) >= 1, "Should have at least 1 edge node registered"
+        macbook = next((n for n in nodes if "MacBook" in n.get("hostname", "")), None)
+        assert macbook is not None, "Travis's MacBook should be registered"
+        assert macbook.get("online") is True, "MacBook should be online"
 
     def test_list_teams(self, auth_token, api_url):
         resp = _api(auth_token, api_url, "/api/teams")
