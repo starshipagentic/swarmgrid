@@ -63,7 +63,13 @@ class TestRoutesTab:
         expect(authed_page.locator("#re-command")).to_have_value("/solve")
         expect(authed_page.locator("#re-prompt")).not_to_be_empty()
 
-    def test_create_and_delete_route(self, authed_page: Page):
+    def test_create_and_delete_route(self, authed_page: Page, auth_token, api_url):
+        import requests as req
+        # Clean up any leftover from prior runs
+        for s in ["TODO", "SGTEST-Browser-Route"]:
+            req.delete(f"{api_url}/api/boards/1/routes/{s}",
+                       headers={"Authorization": f"Bearer {auth_token}"})
+
         authed_page.click("[data-page='routes']")
         authed_page.wait_for_selector("#add-route-btn", timeout=10000)
 
@@ -81,13 +87,13 @@ class TestRoutesTab:
         assert "TODO" in table_text
         assert "/testgen" in table_text
 
-        # Click the pill to open editor, then delete
+        # Click the TODO pill to open editor, then delete
         authed_page.locator("#route-strip .route-col", has_text="TODO").click()
         authed_page.wait_for_selector("#re-delete", timeout=5000)
         authed_page.click("#re-delete")
         authed_page.wait_for_timeout(3000)
 
-        # Verify TODO route is gone from summary (but Droid-Do still there)
+        # Verify /testgen route is gone from summary
         table_text = authed_page.locator("#route-editor-area").text_content()
         assert "/testgen" not in table_text
 
