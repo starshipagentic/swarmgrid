@@ -414,14 +414,21 @@ class TestCLICommands:
             cwd="/Users/t/clients/swarmgrid",
             capture_output=True, text=True, timeout=30,
         )
+        # Status output has human-readable header then JSON starting with {
+        stdout = result.stdout
+        json_start = stdout.index("{")
         import json as _j
-        data = _j.loads(result.stdout)
+        data = _j.loads(stdout[json_start:])
         assert data.get("route_source") == "cloud"
         routes = data.get("routes", [])
         droid = next((r for r in routes if r["status"] == "Droid-Do"), None)
         assert droid is not None
         assert droid["enabled"] is True
         assert droid["transition_on_launch"] == "In Progress"
+        # Also verify the human-readable header
+        header = stdout[:json_start]
+        assert "Heartbeat daemon" in header
+        assert "Route source: cloud" in header
 
     def test_stop_command(self):
         """swarmgrid stop should work without error. Restarts heartbeat if it was running."""
@@ -447,6 +454,22 @@ class TestCLICommands:
                 cwd="/Users/t/clients/swarmgrid",
                 capture_output=True, text=True, timeout=10,
             )
+
+    def test_background_heartbeat(self):
+        """swarmgrid heartbeat --background should launch a tmux session."""
+        import subprocess as _sp
+        # Start background
+        result = _sp.run(
+            [".venv/bin/swarmgrid", "heartbeat", "--background"],
+            cwd="/Users/t/clients/swarmgrid",
+            capture_output=True, text=True, timeout=10,
+        )
+        assert result.returncode == 0
+        assert "swarmgrid-heartbeat" in result.stdout
+        import time; time.sleep(3)
+        # Verify tmux session exists
+        check = _sp.run(["tmux", "has-session", "-t", "swarmgrid-heartbeat"], check=False, capture_output=True)
+        assert check.returncode == 0, "Background heartbeat tmux session should be running"
 
     def test_heartbeat_once_runs(self):
         """heartbeat-once should complete and use cloud routes."""
