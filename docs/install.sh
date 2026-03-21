@@ -243,7 +243,11 @@ main() {
   else
     printf "\n"
     printf "${BOLD}API Key Setup${RESET}\n"
-    printf "Get your API key from your SwarmGrid dashboard (Settings tab).\n\n"
+    printf "Get your API key from your SwarmGrid dashboard:\n"
+    printf "  1. Go to ${GREEN}swarmgrid.org/dashboard.html${RESET}\n"
+    printf "  2. Click the ${BOLD}Setup${RESET} tab\n"
+    printf "  3. Click ${BOLD}Generate Key${RESET}\n"
+    printf "  4. Copy the key and paste it below\n\n"
 
     local api_key=""
     if [ -t 0 ]; then
