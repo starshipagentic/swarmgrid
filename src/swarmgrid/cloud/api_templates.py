@@ -5,6 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
 from .auth import get_current_user
+from .crypto import decrypt, encrypt
 from .db import Board, SessionLocal, Team, TeamMember, Template, User
 
 router = APIRouter(prefix="/api/templates", tags=["templates"])
@@ -40,7 +41,7 @@ def _template_to_dict(t: Template) -> dict:
         "id": t.id,
         "name": t.name,
         "description": t.description,
-        "prompt_template": t.prompt_template,
+        "prompt_template": decrypt(t.prompt_template) if t.prompt_template else "",
         "scope": scope,
         "team_id": t.team_id,
         "board_id": t.board_id,
@@ -111,7 +112,7 @@ def create_template(body: TemplateCreate, user: User = Depends(get_current_user)
         template = Template(
             name=body.name,
             description=body.description,
-            prompt_template=body.prompt_template,
+            prompt_template=encrypt(body.prompt_template),
             team_id=body.team_id,
             board_id=body.board_id,
             recommended_transition_on_launch=body.recommended_transition_on_launch,
@@ -146,7 +147,10 @@ def update_template(template_id: int, body: TemplateUpdate, user: User = Depends
         template = db.query(Template).filter(Template.id == template_id).first()
         if not template:
             raise HTTPException(status_code=404, detail="Template not found")
-        for field, value in body.model_dump(exclude_none=True).items():
+        updates = body.model_dump(exclude_none=True)
+        if "prompt_template" in updates:
+            updates["prompt_template"] = encrypt(updates["prompt_template"])
+        for field, value in updates.items():
             setattr(template, field, value)
         db.commit()
         db.refresh(template)

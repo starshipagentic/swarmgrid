@@ -7,6 +7,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
 from .auth import get_current_user
+from .crypto import decrypt, encrypt
 from .db import AgentSession, Board, BoardMember, EdgeNode, SessionLocal, TeamMember, User, utc_now
 from .heartbeat_coordinator import assign_heartbeat_if_needed
 
@@ -129,7 +130,7 @@ def register_edge(body: RegisterRequest, user: User = Depends(get_current_user))
             .first()
         )
         if node:
-            node.ssh_connect = body.ssh_connect
+            node.ssh_connect = encrypt(body.ssh_connect)
             node.os_name = body.os
             node.online = True
             node.last_seen_at = utc_now()
@@ -138,7 +139,7 @@ def register_edge(body: RegisterRequest, user: User = Depends(get_current_user))
                 owner_id=user.id,
                 hostname=body.hostname,
                 os_name=body.os,
-                ssh_connect=body.ssh_connect,
+                ssh_connect=encrypt(body.ssh_connect),
                 online=True,
             )
             db.add(node)
@@ -180,7 +181,7 @@ def edge_heartbeat(body: HeartbeatReport, user: User = Depends(get_current_user)
                     edge_node_id=node.id,
                     ticket_key=s.get("ticket_key", ""),
                     ticket_summary=s.get("ticket_summary", ""),
-                    prompt=s.get("prompt", ""),
+                    prompt=encrypt(s.get("prompt", "")),
                     state="running",
                 )
                 db.add(session)
@@ -206,7 +207,7 @@ def edge_status(body: StatusReport, user: User = Depends(get_current_user)):
             if session:
                 session.state = s.get("state", session.state)
                 if "output" in s:
-                    session.output_snapshot = s["output"]
+                    session.output_snapshot = encrypt(s["output"])
 
         db.commit()
         return {"ok": True}
@@ -224,7 +225,7 @@ def edge_completed(body: CompletedReport, user: User = Depends(get_current_user)
             raise HTTPException(status_code=404, detail="Session not found")
         session.state = "completed" if body.result == "success" else "failed"
         session.result = body.result
-        session.output_snapshot = body.output
+        session.output_snapshot = encrypt(body.output)
         session.completed_at = utc_now()
         db.commit()
         return {"ok": True}
@@ -300,11 +301,12 @@ def send_edge_command(ticket_key: str, user: User = Depends(get_current_user)):
         ).first()
         if not node:
             raise HTTPException(status_code=404, detail="No online edge node")
-        if not node.ssh_connect:
+        ssh = decrypt(node.ssh_connect) if node.ssh_connect else ""
+        if not ssh:
             raise HTTPException(status_code=400, detail="Edge node has no SSH connect string")
 
         from .relay import attach_session
-        result = attach_session(node.ssh_connect, ticket_key=ticket_key)
+        result = attach_session(ssh, ticket_key=ticket_key)
         return result
     finally:
         db.close()
@@ -319,11 +321,14 @@ def capture_session_output(session_id: str, user: User = Depends(get_current_use
             EdgeNode.owner_id == user.id,
             EdgeNode.online == True,
         ).first()
-        if not node or not node.ssh_connect:
+        if not node:
+            raise HTTPException(status_code=404, detail="No online edge node with SSH")
+        ssh = decrypt(node.ssh_connect) if node.ssh_connect else ""
+        if not ssh:
             raise HTTPException(status_code=404, detail="No online edge node with SSH")
 
         from .relay import capture_output
-        result = capture_output(node.ssh_connect, session_id)
+        result = capture_output(ssh, session_id)
         return result
     finally:
         db.close()

@@ -1,11 +1,14 @@
 """Credential encryption for SwarmGrid cloud.
 
-Encrypts Jira tokens and other secrets at rest using Fernet (AES-128-CBC).
-The encryption key is derived from JWT_SECRET — so the cloud CAN decrypt
-(needed while cloud fetches Jira data directly, before edge nodes take over).
+Encrypts sensitive data at rest using Fernet (AES-128-CBC).
+Uses a dedicated ENCRYPTION_KEY, separate from JWT_SECRET.
 
-When edge nodes handle all Jira polling, this module will be replaced with
-true zero-knowledge encryption where the cloud CANNOT decrypt.
+- JWT_SECRET: only signs/verifies login tokens
+- ENCRYPTION_KEY: only encrypts/decrypts data in the database
+
+If someone leaks JWT_SECRET, they can call APIs but can't read encrypted data.
+If someone leaks ENCRYPTION_KEY, they can decrypt data but can't call APIs.
+Both need to leak for full compromise.
 """
 from __future__ import annotations
 
@@ -17,8 +20,8 @@ from cryptography.fernet import Fernet
 
 
 def _derive_key() -> bytes:
-    """Derive a Fernet key from JWT_SECRET."""
-    secret = os.environ.get("JWT_SECRET", "swarmgrid-dev-secret-change-me")
+    """Derive a Fernet key from ENCRYPTION_KEY (or JWT_SECRET as fallback)."""
+    secret = os.environ.get("ENCRYPTION_KEY") or os.environ.get("JWT_SECRET", "swarmgrid-dev-secret-change-me")
     # Fernet needs a 32-byte URL-safe base64 key
     raw = hashlib.sha256(secret.encode()).digest()
     return base64.urlsafe_b64encode(raw)

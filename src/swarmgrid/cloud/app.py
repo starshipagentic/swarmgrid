@@ -25,6 +25,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, RedirectResponse
 
 from .auth import create_jwt, github_callback, github_login_url, upsert_user
+from .crypto import encrypt
 from .db import create_tables, SessionLocal, Template
 from . import api_boards, api_teams, api_templates, api_edge, ws
 
@@ -89,7 +90,7 @@ def _seed_global_templates():
                 db.add(Template(
                     name=tpl["name"],
                     description=tpl.get("description", ""),
-                    prompt_template=tpl.get("prompt_template", ""),
+                    prompt_template=encrypt(tpl.get("prompt_template", "")),
                     recommended_transition_on_launch=tpl.get("recommended_transition_on_launch"),
                     recommended_transition_on_success=tpl.get("recommended_transition_on_success"),
                     recommended_transition_on_failure=tpl.get("recommended_transition_on_failure"),
@@ -113,7 +114,7 @@ def _seed_global_templates():
                     db.add(Template(
                         name=tpl["name"],
                         description=tpl.get("description", ""),
-                        prompt_template=tpl.get("prompt_template", ""),
+                        prompt_template=encrypt(tpl.get("prompt_template", "")),
                         recommended_transition_on_launch=tpl.get("recommended_transition_on_launch"),
                         recommended_transition_on_success=tpl.get("recommended_transition_on_success"),
                         recommended_transition_on_failure=tpl.get("recommended_transition_on_failure"),

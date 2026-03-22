@@ -89,7 +89,7 @@ def _route_to_dict(r: Route) -> dict:
         "board_id": r.board_id,
         "status": r.status,
         "action": r.action,
-        "prompt_template": r.prompt_template,
+        "prompt_template": decrypt(r.prompt_template) if r.prompt_template else "",
         "enabled": r.enabled,
         "transition_on_launch": r.transition_on_launch,
         "transition_on_success": r.transition_on_success,
@@ -191,7 +191,11 @@ def update_board(board_id: int, body: BoardUpdate, user: User = Depends(get_curr
     db = SessionLocal()
     try:
         board = db.query(Board).filter(Board.id == board_id).first()
-        for field, value in body.model_dump(exclude_none=True).items():
+        updates = body.model_dump(exclude_none=True)
+        for field in ("jira_email", "jira_token"):
+            if field in updates and updates[field]:
+                updates[field] = encrypt(updates[field])
+        for field, value in updates.items():
             setattr(board, field, value)
         db.commit()
         db.refresh(board)
@@ -397,7 +401,7 @@ def create_route(board_id: int, body: RouteCreate, user: User = Depends(get_curr
             board_id=board_id,
             status=body.status,
             action=body.action,
-            prompt_template=body.prompt_template,
+            prompt_template=encrypt(body.prompt_template),
             enabled=body.enabled,
             transition_on_launch=body.transition_on_launch,
             transition_on_success=body.transition_on_success,
@@ -423,6 +427,8 @@ def update_route(board_id: int, status: str, body: RouteUpdate, user: User = Dep
         updates = body.model_dump(exclude_none=True)
         if "allowed_issue_types" in updates:
             updates["allowed_issue_types"] = json.dumps(updates["allowed_issue_types"])
+        if "prompt_template" in updates:
+            updates["prompt_template"] = encrypt(updates["prompt_template"])
         for field, value in updates.items():
             setattr(route, field, value)
         db.commit()
