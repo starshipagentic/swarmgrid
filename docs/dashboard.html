@@ -713,6 +713,7 @@
       const container = document.getElementById('columns');
       // Build set of armed columns from routes
       const routes = data.routes || [];
+      const sessions = data.sessions || [];
       const armedCols = new Set(routes.filter(r => r.enabled).map(r => r.status));
 
       columns.forEach(col => {
@@ -742,7 +743,6 @@
       });
 
       // Show recent sessions below the board
-      const sessions = data.sessions || [];
       if (sessions.length) {
         let sessHtml = '<div style="margin-top:16px;border-top:1px solid var(--border);padding-top:12px"><h3 style="font-size:13px;color:var(--muted);margin-bottom:8px">Recent Agent Sessions</h3>';
         sessHtml += '<table style="width:100%;border-collapse:collapse;font-size:12px">';
