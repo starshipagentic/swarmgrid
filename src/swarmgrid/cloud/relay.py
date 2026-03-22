@@ -30,9 +30,11 @@ def send_command(ssh_connect: str, command: dict, timeout: int = 30) -> dict:
     cmd_json = json.dumps(command)
 
     try:
+        # upterm requires PTY (-tt) and stdin must stay open briefly.
+        # Use bash process substitution to feed the JSON and keep connection alive.
+        bash_cmd = f"ssh -tt -o StrictHostKeyChecking=no -o ConnectTimeout=10 {' '.join(ssh_args)} < <(echo '{cmd_json}'; sleep 2)"
         result = subprocess.run(
-            ["ssh", "-o", "StrictHostKeyChecking=no", "-o", "ConnectTimeout=10", *ssh_args],
-            input=cmd_json,
+            ["bash", "-c", bash_cmd],
             capture_output=True,
             text=True,
             timeout=timeout,
@@ -41,10 +43,24 @@ def send_command(ssh_connect: str, command: dict, timeout: int = 30) -> dict:
             logger.warning("SSH command failed (rc=%d): %s", result.returncode, result.stderr.strip())
             return {"ok": False, "error": f"SSH failed (rc={result.returncode}): {result.stderr.strip()}"}
 
+        # With -tt, output may include echoed input and PTY noise.
+        # Find the JSON response (starts with { and ends with })
         response_text = result.stdout.strip()
         if not response_text:
             return {"ok": False, "error": "Empty response from edge node"}
 
+        # Extract JSON from potentially noisy output
+        for line in response_text.splitlines():
+            line = line.strip()
+            if line.startswith("{") and line.endswith("}"):
+                try:
+                    parsed = json.loads(line)
+                    if "ok" in parsed or "pong" in parsed:
+                        return parsed
+                except json.JSONDecodeError:
+                    continue
+
+        # Fallback: try parsing the whole thing
         return json.loads(response_text)
 
     except subprocess.TimeoutExpired:
