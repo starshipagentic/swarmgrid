@@ -51,8 +51,12 @@ def build_parser() -> argparse.ArgumentParser:
         help="Run heartbeat in a background tmux session (survives terminal close).",
     )
     subparsers.add_parser(
+        "start",
+        help="Start the agent daemon.",
+    )
+    subparsers.add_parser(
         "stop",
-        help="Stop the background heartbeat.",
+        help="Stop the agent daemon.",
     )
     subparsers.add_parser(
         "status",
@@ -186,25 +190,39 @@ def main(argv: list[str] | None = None) -> int:
         print(json.dumps(output, indent=2))
         return 0
 
+    if args.command == "start":
+        import subprocess
+        subprocess.run(
+            ["launchctl", "start", "com.swarmgrid.agent"],
+            check=False, capture_output=True,
+        )
+        import time; time.sleep(3)
+        # Check if it's running
+        from .agent.daemon import _parse_connect_string
+        connect = _parse_connect_string()
+        if connect:
+            print(f"Agent started. SSH: {connect}")
+        else:
+            print("Agent starting... (check: swarmgrid status)")
+        return 0
+
     if args.command == "stop":
         import subprocess
-        stopped = False
+        # Stop via launchctl (the proper way)
+        subprocess.run(
+            ["launchctl", "stop", "com.swarmgrid.agent"],
+            check=False, capture_output=True,
+        )
+        # Also kill any tmux sessions
         for session in ["swarmgrid-agent-bg", "swarmgrid-agent-wrapper", "swarmgrid-agent", "swarmgrid-heartbeat"]:
-            result = subprocess.run(
-                ["tmux", "kill-session", "-t", session],
-                check=False, capture_output=True,
-            )
-            if result.returncode == 0:
-                print(f"Stopped {session}.")
-                stopped = True
+            subprocess.run(["tmux", "kill-session", "-t", session], check=False, capture_output=True)
         # Report offline to cloud
         try:
             from .agent.registration import report_offline
             report_offline()
         except Exception:
             pass
-        if not stopped:
-            print("No agent running.")
+        print("Agent stopped.")
         return 0
 
     if args.command == "heartbeat":
@@ -288,7 +306,7 @@ def main(argv: list[str] | None = None) -> int:
             routes = output.get("routes", [])
             print(f"SwarmGrid Status")
             if daemon == "stopped":
-                print(f"  Agent: {daemon}  (start with: launchctl start com.swarmgrid.agent)")
+                print(f"  Agent: {daemon}  (start with: swarmgrid start)")
             else:
                 print(f"  Agent: {daemon}")
             print(f"  Route source: {source}")
