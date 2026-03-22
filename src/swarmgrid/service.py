@@ -8,6 +8,7 @@ from datetime import datetime, UTC
 from pathlib import Path
 
 from .board_map import transition_id_for_status
+from .cloud_config import fetch_cloud_routes
 from .config import AppConfig, load_config
 from .jira import JiraClient
 from .models import JiraIssue, LaunchRecord, RouteDecision, RunReconciliation
@@ -188,8 +189,22 @@ def _fetch_changelogs(config: AppConfig, store: StateStore) -> None:
             logger.warning("Changelog fetch failed for %s: %s", issue_key, exc)
 
 
+def _with_routes(config: AppConfig, routes: list) -> AppConfig:
+    """Return a shallow copy of config with replaced routes."""
+    from dataclasses import fields
+    kwargs = {f.name: getattr(config, f.name) for f in fields(config)}
+    kwargs["routes"] = routes
+    return AppConfig(**kwargs)
+
+
 def run_heartbeat(config_path: str | Path, force_reconsider: bool = False) -> dict:
     config = load_config(config_path)
+
+    # Overlay cloud routes when available (YAML is the fallback)
+    cloud_routes = fetch_cloud_routes(config)
+    if cloud_routes is not None:
+        config = _with_routes(config, cloud_routes)
+
     store = StateStore(config.local_state_dir)
 
     started_at = utc_now()
@@ -204,6 +219,35 @@ def run_heartbeat(config_path: str | Path, force_reconsider: bool = False) -> di
     )
     launches = launch_planned_decisions(config, store, decisions)
     reconciled = reconcile_runs(config, store)
+
+    # Report completed sessions to cloud (best-effort)
+    try:
+        from .cloud_config import _api_key, _resolve_cloud_board_id, _cloud_base_url, _cloud_get
+        import urllib.request
+        import json as _json
+        api_key = _api_key()
+        if api_key and reconciled:
+            cloud_board_id = _resolve_cloud_board_id(api_key, config.board_id) if config.board_id else None
+            if cloud_board_id:
+                base = _cloud_base_url()
+                for r in reconciled:
+                    try:
+                        body = _json.dumps({
+                            "session_id": f"heartbeat-{r.issue_key}-{r.run_id}",
+                            "result": "success" if r.state == "succeeded" else "failed",
+                            "output": f"State: {r.state}. Proofs: {', '.join(r.proof_files) if r.proof_files else 'none'}",
+                        }).encode()
+                        req = urllib.request.Request(
+                            f"{base}/api/edge/completed",
+                            data=body,
+                            headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
+                            method="POST",
+                        )
+                        urllib.request.urlopen(req, timeout=10)
+                    except Exception:
+                        pass
+    except Exception as exc:
+        logger.debug("Cloud session report failed (non-fatal): %s", exc)
 
     # Fetch changelogs for active sessions (fault-tolerant)
     try:
@@ -228,6 +272,7 @@ def run_heartbeat(config_path: str | Path, force_reconsider: bool = False) -> di
         "decision_count": len(decisions),
         "launched_count": len(launches),
         "watched_statuses": config.watched_statuses,
+        "route_source": "cloud" if cloud_routes is not None else "yaml",
         "issues": [asdict(issue) for issue in issues],
         "archived": archived,
         "decisions": [asdict(decision) for decision in decisions],
@@ -240,13 +285,58 @@ def run_heartbeat(config_path: str | Path, force_reconsider: bool = False) -> di
 
 def get_status(config_path: str | Path) -> dict:
     config = load_config(config_path)
+
+    # Try cloud routes
+    cloud_routes = None
+    try:
+        cloud_routes = fetch_cloud_routes(config)
+    except Exception:
+        pass
+
+    if cloud_routes is not None:
+        config = _with_routes(config, cloud_routes)
+
     store = StateStore(config.local_state_dir)
     reconcile_processes(store)
     summary = store.summarize()
     summary["watched_statuses"] = config.watched_statuses
+    summary["route_source"] = "cloud" if cloud_routes is not None else "yaml"
+    summary["routes"] = [
+        {"status": r.status, "action": r.action, "enabled": r.enabled,
+         "transition_on_launch": r.transition_on_launch,
+         "transition_on_success": r.transition_on_success,
+         "transition_on_failure": r.transition_on_failure}
+        for r in config.routes
+    ]
     summary["local_state_dir"] = str(config.local_state_dir)
     summary["recent_runs"] = store.list_recent_process_runs()
     summary["archived_count"] = len(store.list_archived_processes(limit=200))
+
+    # Check if agent or heartbeat is running
+    import subprocess as _sp
+    agent_running = False
+    for session in ["swarmgrid-agent-bg", "swarmgrid-agent-wrapper", "swarmgrid-agent", "swarmgrid-heartbeat"]:
+        check = _sp.run(["tmux", "has-session", "-t", session], check=False, capture_output=True)
+        if check.returncode == 0:
+            agent_running = True
+            break
+    summary["heartbeat_daemon"] = "running" if agent_running else "stopped"
+
+    # Last heartbeat tick
+    try:
+        with store._connection() as conn:
+            row = conn.execute(
+                "SELECT started_at, issue_count, launched_count FROM heartbeat_ticks ORDER BY rowid DESC LIMIT 1"
+            ).fetchone()
+            if row:
+                summary["last_tick"] = {
+                    "at": row[0],
+                    "issues": row[1],
+                    "launched": row[2],
+                }
+    except Exception:
+        pass
+
     return summary
 
 

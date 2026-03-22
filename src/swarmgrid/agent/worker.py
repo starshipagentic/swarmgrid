@@ -95,6 +95,43 @@ def handle_config(payload: dict) -> dict:
     return {"ok": True, "stored": str(overlay_path)}
 
 
+def handle_attach(payload: dict) -> dict:
+    """Open a tmux session in iTerm2/Terminal.app on the local machine.
+
+    This is triggered by the cloud (or a teammate) when someone clicks
+    a session in the dashboard. The cloud is just a teammate — it SSHs
+    into the edge via upterm and sends this command.
+    """
+    session_id = payload.get("session_id", "")
+    if not session_id:
+        # Try to find by ticket key
+        ticket_key = payload.get("ticket_key", "")
+        if not ticket_key:
+            return {"ok": False, "error": "session_id or ticket_key required"}
+        # Find session by ticket key
+        from .session_manager import list_sessions
+        sessions = list_sessions().get("sessions", [])
+        match = next((s for s in sessions if ticket_key.lower() in s.get("session_id", "").lower()), None)
+        if not match:
+            return {"ok": False, "error": f"no session found for ticket {ticket_key}"}
+        session_id = match["session_id"]
+
+    # Use the existing open_session_in_terminal from runner.py
+    from ..runner import open_session_in_terminal
+    opened = open_session_in_terminal({"session_name": session_id})
+    if opened:
+        return {"ok": True, "opened": session_id, "method": "iterm2_or_terminal"}
+    else:
+        # Fallback: return the attach command for the user
+        return {
+            "ok": True,
+            "opened": False,
+            "session_id": session_id,
+            "attach_command": f"tmux attach -t {session_id}",
+            "hint": "Could not auto-open terminal. Run the attach_command manually.",
+        }
+
+
 def handle_credential_receive(payload: dict) -> dict:
     """Receive a credential from another edge node (edge-to-edge sync)."""
     from .credential_sync import receive_credential
@@ -113,6 +150,7 @@ COMMANDS = {
     "capture": handle_capture,
     "kill": handle_kill,
     "list": handle_list,
+    "attach": handle_attach,
     "config": handle_config,
     "credential_receive": handle_credential_receive,
 }

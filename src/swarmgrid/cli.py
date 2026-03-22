@@ -12,7 +12,11 @@ from .webapp import create_app
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(prog="swarmgrid")
+    parser = argparse.ArgumentParser(
+        prog="swarmgrid",
+        description="AI agent swarm orchestrator for kanban boards",
+    )
+    parser.add_argument("--version", action="version", version="swarmgrid 1.1.0")
     subparsers = parser.add_subparsers(dest="command", required=True)
     common = argparse.ArgumentParser(add_help=False)
     common.add_argument(
@@ -29,6 +33,30 @@ def build_parser() -> argparse.ArgumentParser:
         "heartbeat-once",
         parents=[common],
         help="Run one Jira polling tick.",
+    )
+    heartbeat_parser = subparsers.add_parser(
+        "heartbeat",
+        parents=[common],
+        help="Run the heartbeat loop continuously (polls Jira, launches agents).",
+    )
+    heartbeat_parser.add_argument(
+        "--interval",
+        type=int,
+        default=None,
+        help="Poll interval in seconds (default: from config, typically 240s).",
+    )
+    heartbeat_parser.add_argument(
+        "--background",
+        action="store_true",
+        help="Run heartbeat in a background tmux session (survives terminal close).",
+    )
+    subparsers.add_parser(
+        "start",
+        help="Start the agent daemon.",
+    )
+    subparsers.add_parser(
+        "stop",
+        help="Stop the agent daemon.",
     )
     subparsers.add_parser(
         "status",
@@ -84,12 +112,6 @@ def build_parser() -> argparse.ArgumentParser:
         dest="github_users",
         help="Restrict SSH access to these GitHub users (repeatable).",
     )
-    agent_parser.add_argument(
-        "--background",
-        action="store_true",
-        help="Start agent in background (don't block).",
-    )
-
     menubar_parser = subparsers.add_parser(
         "menubar",
         parents=[common],
@@ -123,9 +145,27 @@ def _collect_config_paths(args: argparse.Namespace) -> list[str]:
     return paths
 
 
+def _resolve_config(config_arg: str) -> str:
+    """Resolve config path, checking common locations if not found."""
+    p = Path(config_arg)
+    if p.exists():
+        return str(p)
+    # Check common locations
+    candidates = [
+        Path.home() / ".swarmgrid" / config_arg,
+        Path.home() / "clients" / "swarmgrid" / config_arg,
+    ]
+    for c in candidates:
+        if c.exists():
+            return str(c)
+    return config_arg  # let it fail with the original path
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
+    if hasattr(args, 'config'):
+        args.config = _resolve_config(args.config)
 
     if args.command == "heartbeat-once":
         config_paths = _collect_config_paths(args)
@@ -133,9 +173,120 @@ def main(argv: list[str] | None = None) -> int:
         for cfg_path in config_paths:
             result = run_heartbeat(cfg_path)
             results.append(result)
-        # Single board -> flat output; multi-board -> list
         output = results[0] if len(results) == 1 else results
+        # Print human-readable summary
+        if isinstance(output, dict):
+            issues = output.get("issue_count", 0)
+            launched = output.get("launched_count", 0)
+            statuses = output.get("watched_statuses", [])
+            source = output.get("route_source", "yaml")
+            print(f"Heartbeat tick ({source} routes): {issues} issue{'s' if issues != 1 else ''} in {', '.join(statuses)}, {launched} launched")
+            for d in output.get("decisions", []):
+                if d.get("should_launch"):
+                    print(f"  Launched: {d['issue_key']} ({d['action']})")
+            for r in output.get("reconciled", []):
+                print(f"  Reconciled: {r['issue_key']} -> {r['state']} (transition: {r.get('transition_target', '—')})")
+            print()
         print(json.dumps(output, indent=2))
+        return 0
+
+    if args.command == "start":
+        import subprocess
+        subprocess.run(
+            ["launchctl", "start", "com.swarmgrid.agent"],
+            check=False, capture_output=True,
+        )
+        import time; time.sleep(3)
+        # Check if it's running
+        from .agent.daemon import _parse_connect_string
+        connect = _parse_connect_string()
+        if connect:
+            print(f"Agent started. SSH: {connect}")
+        else:
+            print("Agent starting... (check: swarmgrid status)")
+        return 0
+
+    if args.command == "stop":
+        import subprocess
+        # Stop via launchctl (the proper way)
+        subprocess.run(
+            ["launchctl", "stop", "com.swarmgrid.agent"],
+            check=False, capture_output=True,
+        )
+        # Also kill any tmux sessions
+        for session in ["swarmgrid-agent-bg", "swarmgrid-agent-wrapper", "swarmgrid-agent", "swarmgrid-heartbeat"]:
+            subprocess.run(["tmux", "kill-session", "-t", session], check=False, capture_output=True)
+        # Report offline to cloud
+        try:
+            from .agent.registration import report_offline
+            report_offline()
+        except Exception:
+            pass
+        print("Agent stopped.")
+        return 0
+
+    if args.command == "heartbeat":
+        import logging
+        import shutil
+        import subprocess
+        from .agent.heartbeat import run_heartbeat_loop
+        import signal
+        import threading
+
+        config_paths = _collect_config_paths(args)
+
+        # Background mode — launch in tmux
+        if args.background:
+            if not shutil.which("tmux"):
+                print("Error: tmux required for --background mode")
+                return 1
+            session_name = "swarmgrid-heartbeat"
+            subprocess.run(["tmux", "kill-session", "-t", session_name], check=False, capture_output=True)
+            abs_config = str(Path(config_paths[0]).resolve())
+            interval_flag = f" --interval {args.interval}" if args.interval else ""
+            # Use the swarmgrid script (installed alongside python in the venv)
+            sg_bin = str(Path(sys.executable).parent / "swarmgrid")
+            cmd = f"{sg_bin} heartbeat --config {abs_config}{interval_flag}; echo 'Heartbeat stopped.'; sleep 999"
+            subprocess.run([
+                "tmux", "new-session", "-d", "-s", session_name, "-c", str(Path(abs_config).parent), cmd
+            ], check=True)
+            print(f"Heartbeat running in background (tmux session: {session_name})")
+            print(f"  Attach: tmux attach -t {session_name}")
+            print(f"  Stop:   tmux kill-session -t {session_name}")
+
+            # Register edge node with cloud (best-effort)
+            try:
+                from .agent.registration import register_edge
+                result = register_edge("heartbeat-daemon")
+                if result.get("ok"):
+                    print(f"  Edge registered: {result.get('hostname', 'unknown')}")
+            except Exception:
+                pass
+
+            return 0
+
+        logging.basicConfig(
+            level=logging.INFO,
+            format="%(asctime)s [%(levelname)s] %(message)s",
+            datefmt="%H:%M:%S",
+        )
+
+        stop_event = threading.Event()
+
+        def _handle_signal(sig, frame):
+            print("\nStopping heartbeat...")
+            stop_event.set()
+
+        signal.signal(signal.SIGINT, _handle_signal)
+        signal.signal(signal.SIGTERM, _handle_signal)
+
+        print(f"SwarmGrid heartbeat starting (config: {config_paths[0]})")
+        print("Press Ctrl-C to stop.\n")
+        run_heartbeat_loop(
+            config_paths[0],
+            poll_interval=args.interval,
+            stop_event=stop_event,
+        )
         return 0
 
     if args.command == "status":
@@ -146,6 +297,32 @@ def main(argv: list[str] | None = None) -> int:
             result["config_path"] = cfg_path
             results.append(result)
         output = results[0] if len(results) == 1 else results
+        # Print human-readable summary
+        if isinstance(output, dict):
+            daemon = output.get("heartbeat_daemon", "unknown")
+            source = output.get("route_source", "yaml")
+            statuses = output.get("watched_statuses", [])
+            running = output.get("running_count", 0)
+            routes = output.get("routes", [])
+            print(f"SwarmGrid Status")
+            if daemon == "stopped":
+                print(f"  Agent: {daemon}  (start with: swarmgrid start)")
+            else:
+                print(f"  Agent: {daemon}")
+            print(f"  Route source: {source}")
+            print(f"  Watching: {', '.join(statuses) if statuses else '(none)'}")
+            print(f"  Running sessions: {running}")
+            last_tick = output.get("last_tick")
+            if last_tick:
+                print(f"  Last tick: {last_tick['at']} ({last_tick['issues']} issues, {last_tick['launched']} launched)")
+            if routes:
+                print(f"  Routes:")
+                for r in routes:
+                    armed = "Armed" if r.get("enabled") else "Off"
+                    print(f"    {r['status']} -> {r['action']} [{armed}]")
+                    if r.get("transition_on_launch"):
+                        print(f"      Launch:{r['transition_on_launch']} Success:{r.get('transition_on_success','—')} Fail:{r.get('transition_on_failure','—')}")
+            print()
         print(json.dumps(output, indent=2))
         return 0
 
@@ -195,13 +372,17 @@ def main(argv: list[str] | None = None) -> int:
             return 0
 
     if args.command == "agent":
+        import logging as _logging
+        _logging.basicConfig(level=_logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s", datefmt="%H:%M:%S")
+
         from .agent.daemon import start_agent
 
+        # One mode. Runs forever. Does everything.
         result = start_agent(
             config_path=args.config,
             upterm_server=args.server,
             github_users=args.github_users,
-            foreground=not args.background,
+            foreground=True,
         )
         print(json.dumps(result, indent=2))
         return 0

@@ -12,7 +12,7 @@ logger = logging.getLogger(__name__)
 
 from .auth import get_current_user
 from .crypto import encrypt, decrypt
-from .db import Board, Route, SessionLocal, Team, TeamMember, User, AgentSession
+from .db import Board, BoardMember, Route, SessionLocal, Team, TeamMember, User, AgentSession
 
 router = APIRouter(prefix="/api/boards", tags=["boards"])
 
@@ -43,15 +43,24 @@ class RouteCreate(BaseModel):
     action: str = "claude_default"
     prompt_template: str = ""
     enabled: bool = False
+    transition_on_launch: str | None = None
+    transition_on_success: str | None = None
+    transition_on_failure: str | None = None
+    allowed_issue_types: list[str] | None = None
 
 
 class RouteUpdate(BaseModel):
+    action: str | None = None
     prompt_template: str | None = None
     transition_on_launch: str | None = None
     transition_on_success: str | None = None
     transition_on_failure: str | None = None
     allowed_issue_types: list[str] | None = None
     enabled: bool | None = None
+
+
+class MemberAdd(BaseModel):
+    github_login: str
 
 
 # ── Helpers ────────────────────────────────────────────────────────────
@@ -80,7 +89,7 @@ def _route_to_dict(r: Route) -> dict:
         "board_id": r.board_id,
         "status": r.status,
         "action": r.action,
-        "prompt_template": r.prompt_template,
+        "prompt_template": decrypt(r.prompt_template) if r.prompt_template else "",
         "enabled": r.enabled,
         "transition_on_launch": r.transition_on_launch,
         "transition_on_success": r.transition_on_success,
@@ -182,7 +191,11 @@ def update_board(board_id: int, body: BoardUpdate, user: User = Depends(get_curr
     db = SessionLocal()
     try:
         board = db.query(Board).filter(Board.id == board_id).first()
-        for field, value in body.model_dump(exclude_none=True).items():
+        updates = body.model_dump(exclude_none=True)
+        for field in ("jira_email", "jira_token"):
+            if field in updates and updates[field]:
+                updates[field] = encrypt(updates[field])
+        for field, value in updates.items():
             setattr(board, field, value)
         db.commit()
         db.refresh(board)
@@ -237,7 +250,11 @@ async def board_snapshot(board_id: int, user: User = Depends(get_current_user)):
                 col_statuses = set(col.get("statuses", [col_name]))
                 col_issues = [i for i in jira_issues if i.get("status") in col_statuses]
                 route = next((r for r in routes if r.status == col_name), None)
+                # Build set of ticket keys with active sessions
+                active_sessions = {s.ticket_key: s.state for s in sessions if s.state in ("pending", "launching", "running")}
+
                 columns.append({
+                    "name": col_name,
                     "status": col_name,
                     "count": len(col_issues),
                     "armed": route.enabled if route else False,
@@ -248,13 +265,14 @@ async def board_snapshot(board_id: int, user: User = Depends(get_current_user)):
                             "status_name": i.get("status", ""),
                             "assignee": i.get("assignee"),
                             "issue_type": i.get("issue_type", ""),
+                            "agent_status": active_sessions.get(i["key"]),
                         }
                         for i in col_issues
                     ],
                 })
         else:
             for route in routes:
-                columns.append({"status": route.status, "count": 0, "armed": route.enabled, "tickets": []})
+                columns.append({"name": route.status, "status": route.status, "count": 0, "armed": route.enabled, "tickets": []})
 
         return {
             "board": _board_to_dict(board),
@@ -383,8 +401,12 @@ def create_route(board_id: int, body: RouteCreate, user: User = Depends(get_curr
             board_id=board_id,
             status=body.status,
             action=body.action,
-            prompt_template=body.prompt_template,
+            prompt_template=encrypt(body.prompt_template),
             enabled=body.enabled,
+            transition_on_launch=body.transition_on_launch,
+            transition_on_success=body.transition_on_success,
+            transition_on_failure=body.transition_on_failure,
+            allowed_issue_types=json.dumps(body.allowed_issue_types) if body.allowed_issue_types else "",
         )
         db.add(route)
         db.commit()
@@ -405,6 +427,8 @@ def update_route(board_id: int, status: str, body: RouteUpdate, user: User = Dep
         updates = body.model_dump(exclude_none=True)
         if "allowed_issue_types" in updates:
             updates["allowed_issue_types"] = json.dumps(updates["allowed_issue_types"])
+        if "prompt_template" in updates:
+            updates["prompt_template"] = encrypt(updates["prompt_template"])
         for field, value in updates.items():
             setattr(route, field, value)
         db.commit()
@@ -438,6 +462,82 @@ def delete_route(board_id: int, status: str, user: User = Depends(get_current_us
         if not route:
             raise HTTPException(status_code=404, detail=f"No route for status '{status}'")
         db.delete(route)
+        db.commit()
+        return {"ok": True}
+    finally:
+        db.close()
+
+
+# ── Board Members (GitHub usernames) ──────────────────────────────────
+
+@router.get("/{board_id}/members")
+def list_board_members(board_id: int, user: User = Depends(get_current_user)):
+    _require_board_access(board_id, user)
+    db = SessionLocal()
+    try:
+        members = db.query(BoardMember).filter(BoardMember.board_id == board_id).all()
+        return {
+            "members": [
+                {
+                    "id": m.id,
+                    "github_login": m.github_login,
+                    "added_at": m.added_at.isoformat() if m.added_at else None,
+                }
+                for m in members
+            ]
+        }
+    finally:
+        db.close()
+
+
+@router.post("/{board_id}/members", status_code=201)
+def add_board_member(board_id: int, body: MemberAdd, user: User = Depends(get_current_user)):
+    _require_board_access(board_id, user)
+    login = body.github_login.strip().lstrip("@").lower()
+    if not login:
+        raise HTTPException(status_code=400, detail="github_login is required")
+    db = SessionLocal()
+    try:
+        existing = (
+            db.query(BoardMember)
+            .filter(BoardMember.board_id == board_id, BoardMember.github_login == login)
+            .first()
+        )
+        if existing:
+            raise HTTPException(status_code=409, detail=f"'{login}' is already a member of this board")
+        member = BoardMember(
+            board_id=board_id,
+            github_login=login,
+            added_by=user.id,
+        )
+        db.add(member)
+        db.commit()
+        db.refresh(member)
+        return {
+            "ok": True,
+            "member": {
+                "id": member.id,
+                "github_login": member.github_login,
+                "added_at": member.added_at.isoformat() if member.added_at else None,
+            },
+        }
+    finally:
+        db.close()
+
+
+@router.delete("/{board_id}/members/{github_login}")
+def remove_board_member(board_id: int, github_login: str, user: User = Depends(get_current_user)):
+    _require_board_access(board_id, user)
+    db = SessionLocal()
+    try:
+        member = (
+            db.query(BoardMember)
+            .filter(BoardMember.board_id == board_id, BoardMember.github_login == github_login.lower())
+            .first()
+        )
+        if not member:
+            raise HTTPException(status_code=404, detail=f"'{github_login}' is not a member of this board")
+        db.delete(member)
         db.commit()
         return {"ok": True}
     finally:

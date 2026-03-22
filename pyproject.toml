@@ -4,17 +4,22 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "swarmgrid"
-version = "1.0.2"
+version = "1.1.0"
 description = "AI agent swarm orchestrator for kanban boards — heartbeat, tmux sessions, team visibility."
 requires-python = ">=3.11"
 dependencies = [
   "dagster>=1.11,<2",
   "dagster-webserver>=1.11,<2",
   "fastapi>=0.116,<1",
+  "httpx>=0.27,<1",
   "keyring>=25,<26",
+  "PyJWT>=2.9,<3",
   "PyYAML>=6.0,<7",
   "rich>=13.9,<14",
   "requests>=2.32,<3",
+  "rumps>=0.4,<1; sys_platform == 'darwin'",
+  "SQLAlchemy>=2.0,<3",
+  "cryptography>=44,<45",
   "uvicorn>=0.35,<1",
 ]
 

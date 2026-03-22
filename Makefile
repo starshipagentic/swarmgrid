@@ -4,10 +4,10 @@ help: ## Show this help
 	@echo "SwarmGrid — AI Agent Swarm Orchestrator"
 	@echo ""
 	@echo "Quick start:"
-	@echo "  make start     Start background heartbeat (polls Jira every 4min)"
+	@echo "  make start     Start agent (upterm + heartbeat + incoming commands)"
 	@echo "  make status    Show current state and cloud routes"
-	@echo "  make logs      Watch heartbeat output live"
-	@echo "  make stop      Stop background heartbeat"
+	@echo "  make logs      Watch agent output live"
+	@echo "  make stop      Stop agent"
 	@echo ""
 	@echo "Testing:"
 	@echo "  make test      Run all E2E tests (API + browser)"
@@ -38,9 +38,9 @@ heartbeat-once:
 heartbeat:
 	.venv/bin/swarmgrid heartbeat
 
-# Start background heartbeat daemon
+# Start agent (upterm + heartbeat + incoming commands)
 start:
-	.venv/bin/swarmgrid heartbeat --background
+	.venv/bin/swarmgrid agent --background
 
 # Stop background heartbeat
 stop:
@@ -50,9 +50,9 @@ stop:
 status:
 	.venv/bin/swarmgrid status
 
-# Watch heartbeat output live
+# Watch agent output live
 logs:
-	tmux attach -t swarmgrid-heartbeat
+	tmux attach -t swarmgrid-agent-bg
 
 # Deploy to Fly.io
 deploy:

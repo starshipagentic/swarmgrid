@@ -143,8 +143,15 @@ class SwarmGridApp(rumps.App):
         except Exception:
             self._connected = False
 
-        # Update icon
-        if self._connected:
+        # Get active sessions FIRST so we can set icon based on them
+        try:
+            sessions_data = list_sessions()
+            sessions = sessions_data.get("sessions", [])
+        except Exception:
+            sessions = []
+
+        # Update icon — green if sessions running OR agent connected
+        if sessions or self._connected:
             if _ICON_CONNECTED:
                 self.icon = _ICON_CONNECTED
             self.title = ""
@@ -153,65 +160,63 @@ class SwarmGridApp(rumps.App):
                 self.icon = _ICON_DISCONNECTED
             self.title = ""
 
-        # Get active sessions
-        try:
-            sessions_data = list_sessions()
-            sessions = sessions_data.get("sessions", [])
-        except Exception:
-            sessions = []
-
-        # Update status line
+        # Update status line — show sessions even without upterm agent
+        n = len(sessions)
         if self._paused:
             status_text = "Paused"
+        elif n > 0:
+            agents_word = "session" if n == 1 else "sessions"
+            status_text = f"{n} {agents_word} running"
         elif self._connected:
-            n = len(sessions)
-            agents_word = "agent" if n == 1 else "agents"
-            status_text = f"Connected \u00b7 {n} {agents_word} running"
+            status_text = "Connected \u00b7 idle"
         else:
-            status_text = "Offline"
+            status_text = "Ready"
 
-        self._status_item.title = status_text
+        # Filter to only ticket sessions (not heartbeat/agent)
+        ticket_sessions = [s for s in sessions
+                          if s.get("session_id", "").startswith("swarmgrid-")
+                          and s.get("session_id") not in ("swarmgrid-agent", "swarmgrid-heartbeat")]
 
-        # Rebuild ticket list — clear old dynamic items and re-add
-        # Remove any existing ticket items (between separator1 and separator2)
-        keys_to_remove = [
-            k for k in self.menu.keys()
-            if isinstance(k, str) and k not in {
-                self._status_item.title,
-                "Open Dashboard", "Pause", "Resume",
-                "View Logs", "Quit SwarmGrid",
-                "No active tickets",
-            }
+        # Rebuild the entire menu from scratch
+        items = [
+            rumps.MenuItem(status_text, callback=None),
+            rumps.separator,
         ]
-        for k in keys_to_remove:
-            try:
-                del self.menu[k]
-            except KeyError:
-                pass
 
-        # Remove placeholder if we have real sessions
-        if sessions:
-            try:
-                del self.menu["No active tickets"]
-            except KeyError:
-                pass
-
-            for sess in sessions:
+        if ticket_sessions:
+            for sess in ticket_sessions:
                 sid = sess.get("session_id", "")
                 state = sess.get("state", "unknown")
                 ticket = _ticket_key_from_session(sid)
                 icon = "\u2739" if state == "running" else "\u25cc"
                 item_title = f"{ticket} {icon} {state}"
-                item = rumps.MenuItem(item_title, callback=None)
-                item.set_callback(None)
-                # Insert after status item
-                self.menu.insert_after(self._status_item.title, item)
+                items.append(rumps.MenuItem(item_title, callback=self._make_session_callback(sid)))
         else:
-            # Ensure placeholder is present
-            if "No active tickets" not in self.menu:
-                placeholder = rumps.MenuItem("No active tickets", callback=None)
-                placeholder.set_callback(None)
-                self.menu.insert_after(self._status_item.title, placeholder)
+            placeholder = rumps.MenuItem("No active tickets", callback=None)
+            placeholder.set_callback(None)
+            items.append(placeholder)
+
+        items.append(rumps.separator)
+        items.append(rumps.MenuItem("Open Dashboard", callback=self._open_dashboard))
+        items.append(rumps.MenuItem("Pause" if not self._paused else "Resume", callback=self._toggle_pause))
+        items.append(rumps.MenuItem("View Logs", callback=self._view_logs))
+        items.append(rumps.separator)
+        items.append(rumps.MenuItem("Quit SwarmGrid", callback=self._quit))
+
+        self.menu.clear()
+        self.menu = items
+
+    def _make_session_callback(self, session_id):
+        """Return a callback that opens iTerm2 attached to a tmux session."""
+        def _cb(_sender):
+            from ..runner import open_session_in_terminal
+            opened = open_session_in_terminal({"session_name": session_id})
+            if not opened:
+                # Fallback: copy attach command to clipboard
+                cmd = f"tmux attach -t {session_id}"
+                subprocess.run(["pbcopy"], input=cmd.encode(), check=False)
+                rumps.notification("SwarmGrid", "Copied to clipboard", cmd)
+        return _cb
 
     def _open_dashboard(self, _sender):
         webbrowser.open(DASHBOARD_URL)
@@ -230,10 +235,14 @@ class SwarmGridApp(rumps.App):
                 self._start_agent_thread()
 
     def _view_logs(self, _sender):
-        """Open Terminal.app tailing the agent log."""
+        """Open the agent log file in Console.app or default text viewer."""
         log_path = AGENT_LOG
-        script = f'tell application "Terminal" to do script "tail -f {log_path}"'
-        subprocess.Popen(["osascript", "-e", script])
+        if os.path.exists(log_path):
+            subprocess.Popen(["open", "-a", "Console", log_path])
+        else:
+            # Create empty log so there's something to open
+            Path(log_path).touch()
+            subprocess.Popen(["open", "-a", "Console", log_path])
 
     def _quit(self, _sender):
         """Graceful shutdown."""

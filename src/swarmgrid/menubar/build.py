@@ -1,80 +1,61 @@
 """Build script to package SwarmGrid as a macOS .app bundle.
 
-Uses py2app to create a self-contained application in dist/SwarmGrid.app.
+Uses PyInstaller to create a self-contained application in dist/SwarmGrid.app.
 Run: python -m swarmgrid.menubar.build
 """
 from __future__ import annotations
 
-import os
 import subprocess
 import sys
 from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent.parent
-APP_SCRIPT = Path(__file__).resolve().parent / "app.py"
+LAUNCHER = Path(__file__).resolve().parent / "launcher.py"
 RESOURCES_DIR = PROJECT_ROOT / "resources"
 DIST_DIR = PROJECT_ROOT / "dist"
-BUILD_DIR = PROJECT_ROOT / "build"
-
-
-def write_setup_py() -> Path:
-    """Generate a temporary setup.py for py2app."""
-    setup_path = PROJECT_ROOT / "_menubar_setup.py"
-
-    icon_files = []
-    for name in ("icon_connected.png", "icon_disconnected.png"):
-        p = RESOURCES_DIR / name
-        if p.exists():
-            icon_files.append(str(p))
-
-    setup_content = f"""\
-from setuptools import setup
-
-APP = [{str(APP_SCRIPT)!r}]
-DATA_FILES = []
-OPTIONS = {{
-    "argv_emulation": False,
-    "iconfile": None,
-    "plist": {{
-        "CFBundleName": "SwarmGrid",
-        "CFBundleDisplayName": "SwarmGrid",
-        "CFBundleIdentifier": "com.swarmgrid.agent",
-        "CFBundleVersion": "1.0.0",
-        "LSUIElement": True,  # hide from Dock (menu bar app)
-    }},
-    "packages": ["swarmgrid", "rumps"],
-    "resources": {icon_files!r},
-}}
-
-setup(
-    app=APP,
-    data_files=DATA_FILES,
-    options={{"py2app": OPTIONS}},
-    setup_requires=["py2app"],
-)
-"""
-    setup_path.write_text(setup_content)
-    return setup_path
 
 
 def build():
-    """Run py2app to create the .app bundle."""
-    # Ensure py2app is available
+    """Run PyInstaller to create the .app bundle."""
     subprocess.run(
-        [sys.executable, "-m", "pip", "install", "py2app"],
+        [sys.executable, "-m", "pip", "install", "pyinstaller"],
         check=True,
+        capture_output=True,
     )
 
-    setup_py = write_setup_py()
+    cmd = [
+        sys.executable, "-m", "PyInstaller",
+        "--name", "SwarmGrid",
+        "--windowed",
+        "--onedir",
+        "--osx-bundle-identifier", "com.swarmgrid.agent",
+        "--paths", str(PROJECT_ROOT / "src"),
+        "--hidden-import", "rumps",
+        "--hidden-import", "swarmgrid",
+        "--hidden-import", "swarmgrid.agent",
+        "--hidden-import", "swarmgrid.agent.daemon",
+        "--hidden-import", "swarmgrid.agent.worker",
+        "--hidden-import", "swarmgrid.agent.registration",
+        "--hidden-import", "swarmgrid.agent.credential_store",
+        "--hidden-import", "swarmgrid.agent.session_manager",
+        "--hidden-import", "swarmgrid.agent.heartbeat",
+        "--hidden-import", "swarmgrid.menubar",
+        "--hidden-import", "swarmgrid.menubar.app",
+        "--noconfirm",
+    ]
 
-    try:
-        subprocess.run(
-            [sys.executable, str(setup_py), "py2app"],
-            cwd=str(PROJECT_ROOT),
-            check=True,
-        )
-    finally:
-        setup_py.unlink(missing_ok=True)
+    # Add icon if available
+    icon = RESOURCES_DIR / "icon_connected.png"
+    if icon.exists():
+        cmd.extend(["--icon", str(icon)])
+
+    # Add resources data
+    if RESOURCES_DIR.exists():
+        cmd.extend(["--add-data", f"{RESOURCES_DIR}:resources"])
+
+    cmd.append(str(LAUNCHER))
+
+    subprocess.run(cmd, cwd=str(PROJECT_ROOT), check=True)
 
     app_path = DIST_DIR / "SwarmGrid.app"
     if app_path.exists():

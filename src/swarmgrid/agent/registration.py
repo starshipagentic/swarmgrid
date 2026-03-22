@@ -95,6 +95,54 @@ def register_edge(ssh_connect: str) -> dict:
         return {"ok": False, "error": str(exc)}
 
 
+def fetch_authorized_keys() -> dict:
+    """Fetch authorized_keys and github_users from the cloud.
+
+    Returns {"authorized_keys": [...], "github_users": [...]} on success.
+    Returns {"authorized_keys": [], "github_users": []} on any failure
+    so the agent can fall back to --accept.
+    """
+    empty: dict = {"authorized_keys": [], "github_users": []}
+
+    api_key = _api_key()
+    if not api_key:
+        logger.warning("No API key — cannot fetch authorized_keys from cloud")
+        return empty
+
+    base_url = _cloud_base_url()
+    url = f"{base_url}/api/edge/authorized-keys"
+
+    req = urllib.request.Request(
+        url,
+        headers={
+            "Authorization": f"Bearer {api_key}",
+        },
+        method="GET",
+    )
+
+    try:
+        with urllib.request.urlopen(req, timeout=15) as resp:
+            data = json.loads(resp.read())
+            return {
+                "authorized_keys": data.get("authorized_keys", []),
+                "github_users": data.get("github_users", []),
+            }
+    except urllib.error.HTTPError as exc:
+        error_body = ""
+        try:
+            error_body = exc.read().decode()[:200]
+        except Exception:
+            pass
+        logger.warning("Failed to fetch authorized_keys: HTTP %s: %s", exc.code, error_body)
+        return empty
+    except urllib.error.URLError as exc:
+        logger.warning("Failed to fetch authorized_keys: connection failed: %s", exc.reason)
+        return empty
+    except Exception as exc:
+        logger.warning("Failed to fetch authorized_keys: %s", exc)
+        return empty
+
+
 def report_heartbeat(board_id: int, tickets_found: list, sessions_launched: list) -> dict:
     """POST heartbeat results to the cloud."""
     api_key = _api_key()

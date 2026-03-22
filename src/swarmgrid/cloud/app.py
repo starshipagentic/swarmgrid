@@ -9,9 +9,13 @@ Environment variables:
     GITHUB_CLIENT_SECRET  — GitHub OAuth app client secret
     JWT_SECRET            — Secret for signing JWT tokens
     JWT_EXPIRY_HOURS      — Token expiry (default: 72)
+    CLOUD_SSH_PRIVATE_KEY — Base64-encoded ed25519 private key for SSH to edge agents
 """
 from __future__ import annotations
+import base64
+import logging
 import os
+import stat
 
 
 from contextlib import asynccontextmanager
@@ -21,13 +25,170 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, RedirectResponse
 
 from .auth import create_jwt, github_callback, github_login_url, upsert_user
-from .db import create_tables
+from .crypto import encrypt
+from .db import create_tables, SessionLocal, Template
 from . import api_boards, api_teams, api_templates, api_edge, ws
+
+
+GLOBAL_TEMPLATES = [
+    {
+        "name": "/solve",
+        "description": "General-purpose bug/task solver — reads the codebase, implements the fix, runs tests.",
+        "prompt_template": "Solve ticket {issue_key}: {summary}. Read the codebase, implement the fix, run tests.",
+        "recommended_transition_on_launch": "In Progress",
+        "recommended_transition_on_success": "Review",
+        "recommended_transition_on_failure": "Blocked",
+    },
+    {
+        "name": "/prd2epic",
+        "description": "Convert a PRD document into an Epic with Stories and acceptance criteria.",
+        "prompt_template": "Convert the PRD in {issue_key} into an Epic. Break it into Stories with clear acceptance criteria and estimates.",
+        "recommended_transition_on_success": "Review",
+    },
+    {
+        "name": "/epic2stories",
+        "description": "Break an Epic into implementable Stories with subtasks.",
+        "prompt_template": "Break Epic {issue_key}: {summary} into Stories. Each Story should be independently implementable with subtasks, AC, and estimates.",
+        "recommended_transition_on_success": "Review",
+    },
+    {
+        "name": "/testgen",
+        "description": "Generate comprehensive tests for uncovered code changes.",
+        "prompt_template": "Generate comprehensive tests for the changes described in {issue_key}: {summary}. Cover edge cases, error paths, and integration scenarios.",
+        "recommended_transition_on_success": "Review",
+    },
+    {
+        "name": "/migrate",
+        "description": "Implement database migration from a ticket description.",
+        "prompt_template": "Implement the database migration described in {issue_key}: {summary}. Generate migration files, update models, and verify with tests.",
+        "recommended_transition_on_launch": "In Progress",
+        "recommended_transition_on_success": "Review",
+        "recommended_transition_on_failure": "Blocked",
+    },
+]
+
+
+def _seed_global_templates():
+    """Insert global templates if they don't already exist."""
+    from sqlalchemy import text
+    from .db import Base, engine
+    import logging
+
+    db = SessionLocal()
+    try:
+        # Check if existing table allows NULL created_by (SQLite migration)
+        try:
+            existing = {t.name for t in db.query(Template).filter(
+                Template.team_id.is_(None), Template.board_id.is_(None)
+            ).all()}
+        except Exception:
+            existing = set()
+
+        added = 0
+        for tpl in GLOBAL_TEMPLATES:
+            if tpl["name"] not in existing:
+                db.add(Template(
+                    name=tpl["name"],
+                    description=tpl.get("description", ""),
+                    prompt_template=encrypt(tpl.get("prompt_template", "")),
+                    recommended_transition_on_launch=tpl.get("recommended_transition_on_launch"),
+                    recommended_transition_on_success=tpl.get("recommended_transition_on_success"),
+                    recommended_transition_on_failure=tpl.get("recommended_transition_on_failure"),
+                    created_by=None,
+                ))
+                added += 1
+        if added:
+            try:
+                db.commit()
+            except Exception:
+                # Likely NOT NULL constraint on created_by in old schema —
+                # recreate table (safe: templates table is empty in production)
+                db.rollback()
+                db.close()
+                with engine.connect() as conn:
+                    conn.execute(text("DROP TABLE IF EXISTS templates"))
+                    conn.commit()
+                Base.metadata.tables["templates"].create(engine)
+                db = SessionLocal()
+                for tpl in GLOBAL_TEMPLATES:
+                    db.add(Template(
+                        name=tpl["name"],
+                        description=tpl.get("description", ""),
+                        prompt_template=encrypt(tpl.get("prompt_template", "")),
+                        recommended_transition_on_launch=tpl.get("recommended_transition_on_launch"),
+                        recommended_transition_on_success=tpl.get("recommended_transition_on_success"),
+                        recommended_transition_on_failure=tpl.get("recommended_transition_on_failure"),
+                        created_by=None,
+                    ))
+                db.commit()
+                logging.getLogger(__name__).info("Recreated templates table and seeded %d global templates", len(GLOBAL_TEMPLATES))
+    finally:
+        db.close()
+
+
+SSH_DIR = "/data/.ssh"
+SSH_KEY_PATH = os.path.join(SSH_DIR, "id_ed25519")
+SSH_PUB_PATH = os.path.join(SSH_DIR, "id_ed25519.pub")
+
+_log = logging.getLogger(__name__)
+
+
+def _setup_cloud_ssh_key():
+    """Write (or generate) the cloud's SSH keypair at startup.
+
+    If CLOUD_SSH_PRIVATE_KEY is set (base64-encoded PEM), decode and write it.
+    Otherwise generate a throwaway keypair for local dev.
+    """
+    from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+    from cryptography.hazmat.primitives import serialization
+    from cryptography.exceptions import UnsupportedAlgorithm
+
+    os.makedirs(SSH_DIR, mode=0o700, exist_ok=True)
+
+    env_key = os.environ.get("CLOUD_SSH_PRIVATE_KEY", "")
+
+    if env_key:
+        # Decode base64 → key bytes (could be PEM or OpenSSH format)
+        key_bytes = base64.b64decode(env_key)
+        try:
+            private_key = serialization.load_ssh_private_key(key_bytes, password=None)
+        except (ValueError, UnsupportedAlgorithm):
+            private_key = serialization.load_pem_private_key(key_bytes, password=None)
+        _log.info("Cloud SSH key loaded from CLOUD_SSH_PRIVATE_KEY env var")
+    else:
+        # Dev mode — generate ephemeral keypair
+        private_key = Ed25519PrivateKey.generate()
+        _log.warning("No CLOUD_SSH_PRIVATE_KEY set — generated ephemeral SSH keypair (dev only)")
+
+    # Write private key
+    priv_pem = private_key.private_bytes(
+        encoding=serialization.Encoding.PEM,
+        format=serialization.PrivateFormat.OpenSSH,
+        encryption_algorithm=serialization.NoEncryption(),
+    )
+    with open(SSH_KEY_PATH, "wb") as f:
+        f.write(priv_pem)
+    os.chmod(SSH_KEY_PATH, stat.S_IRUSR | stat.S_IWUSR)  # 0o600
+
+    # Derive and write public key
+    pub_key = private_key.public_key()
+    pub_bytes = pub_key.public_bytes(
+        encoding=serialization.Encoding.OpenSSH,
+        format=serialization.PublicFormat.OpenSSH,
+    )
+    with open(SSH_PUB_PATH, "wb") as f:
+        f.write(pub_bytes)
+        f.write(b"\n")
+    os.chmod(SSH_PUB_PATH, stat.S_IRUSR | stat.S_IWUSR | stat.S_IRGRP | stat.S_IROTH)  # 0o644
+
+    _log.info("Cloud SSH public key: %s", pub_bytes.decode())
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     create_tables()
+    _seed_global_templates()
+    _setup_cloud_ssh_key()
     yield
 
 
@@ -76,6 +237,38 @@ async def callback(code: str):
     user = upsert_user(gh)
     token = create_jwt(user)
     return RedirectResponse(f"{FRONTEND_URL}/dashboard.html?token={token}", status_code=302)
+
+
+@app.get("/api/auth/api-key")
+async def generate_api_key(request: Request):
+    """Generate a long-lived API key (30 days) for the edge agent."""
+    from .auth import decode_jwt
+    from .db import SessionLocal, User
+    token = request.cookies.get("swarmgrid_token")
+    if not token:
+        auth = request.headers.get("Authorization", "")
+        if auth.startswith("Bearer "):
+            token = auth[7:]
+    if not token:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    claims = decode_jwt(token)
+    user_id = int(claims["sub"])
+    db = SessionLocal()
+    try:
+        user = db.query(User).filter(User.id == user_id).first()
+        if not user:
+            raise HTTPException(status_code=401, detail="User not found")
+        import jwt as pyjwt
+        from datetime import datetime as _dt, timedelta, UTC
+        long_token = pyjwt.encode(
+            {"sub": str(user.id), "github_login": user.github_login,
+             "exp": _dt.now(UTC) + timedelta(days=30)},
+            os.environ.get("JWT_SECRET", "swarmgrid-dev-secret-change-me"),
+            algorithm="HS256",
+        )
+        return {"api_key": long_token, "expires_in_days": 30}
+    finally:
+        db.close()
 
 
 @app.get("/api/auth/me")

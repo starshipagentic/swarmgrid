@@ -25,7 +25,7 @@ import threading
 from pathlib import Path
 from typing import Any
 
-from .registration import register_edge, report_offline
+from .registration import fetch_authorized_keys, register_edge, report_offline
 
 logger = logging.getLogger(__name__)
 
@@ -60,8 +60,46 @@ def start_agent(
     )
 
     # Find python and build the force-command
-    python_path = sys.executable or shutil.which("python3") or "python3"
+    if getattr(sys, 'frozen', False):
+        # Running from PyInstaller bundle — use system python with installed swarmgrid
+        python_path = shutil.which("python3") or "python3"
+    else:
+        python_path = sys.executable or shutil.which("python3") or "python3"
     force_cmd = f"{python_path} -m swarmgrid.agent.worker"
+
+    # Fetch authorized_keys from the cloud so only the cloud + teammates can connect.
+    # If cloud is down, use the cached file from the last successful fetch.
+    auth_keys_path = Path.home() / ".swarmgrid" / "authorized_keys"
+    auth_data = fetch_authorized_keys()
+    cloud_keys = auth_data.get("authorized_keys", [])
+    cloud_github_users = auth_data.get("github_users", [])
+
+    # Merge cloud-provided github_users with any passed via CLI
+    all_github_users = list(github_users or [])
+    for gu in cloud_github_users:
+        if gu not in all_github_users:
+            all_github_users.append(gu)
+
+    if cloud_keys:
+        # Fresh keys from cloud — write them
+        auth_keys_path.parent.mkdir(parents=True, exist_ok=True)
+        auth_keys_path.write_text("\n".join(cloud_keys) + "\n")
+        os.chmod(str(auth_keys_path), 0o600)
+        logger.info(
+            "Wrote %d authorized key(s) to %s", len(cloud_keys), auth_keys_path
+        )
+    elif auth_keys_path.exists():
+        # Cloud unreachable but we have cached keys from last time — use those
+        logger.warning(
+            "Cloud unreachable — using cached authorized_keys from %s", auth_keys_path
+        )
+    else:
+        # True first startup with no cloud — no keys at all
+        logger.warning(
+            "No authorized keys (first startup, cloud unreachable) — running without --authorized-keys"
+        )
+
+    use_authorized_keys = auth_keys_path.exists()
 
     cmd_parts = [
         "upterm", "host",
@@ -70,12 +108,15 @@ def start_agent(
         "--server", upterm_server,
         "--force-command", force_cmd,
     ]
-    if github_users:
-        for user in github_users:
-            cmd_parts.extend(["--github-user", user])
-    cmd_parts.extend(["--", "bash", "-c", "echo 'Agent is running. Ctrl-C to stop.'; sleep infinity"])
+    if use_authorized_keys:
+        cmd_parts.extend(["--authorized-keys", str(auth_keys_path)])
 
-    shell_cmd = shlex.join(cmd_parts) + f" 2>&1 | tee {LOG_FILE}; sleep 999"
+    if all_github_users:
+        for user in all_github_users:
+            cmd_parts.extend(["--github-user", user])
+    cmd_parts.extend(["--", "bash", "-c", "echo 'Agent is running. Ctrl-C to stop.'; while true; do sleep 86400; done"])
+
+    shell_cmd = shlex.join(cmd_parts) + f" 2>&1 | tee {LOG_FILE}; echo 'Upterm exited.'; while true; do sleep 86400; done"
 
     # Launch in a tmux session
     subprocess.run(
@@ -124,8 +165,11 @@ def start_agent(
         logger.info("Received signal %s, shutting down...", sig)
         stop_event.set()
 
-    signal.signal(signal.SIGINT, _signal_handler)
-    signal.signal(signal.SIGTERM, _signal_handler)
+    try:
+        signal.signal(signal.SIGINT, _signal_handler)
+        signal.signal(signal.SIGTERM, _signal_handler)
+    except ValueError:
+        pass  # Not in main thread — signals handled by parent
 
     # Start heartbeat in background thread
     heartbeat_thread = threading.Thread(

@@ -10,6 +10,7 @@ import time
 from pathlib import Path
 
 from ..config import load_config
+from ..cloud_config import _resolve_cloud_board_id, _api_key
 from ..service import run_heartbeat
 from .registration import report_heartbeat
 
@@ -37,9 +38,12 @@ def run_heartbeat_loop(
         stop_event: threading.Event or similar — loop exits when set
     """
     config = load_config(config_path)
-    interval = poll_interval or int(config.poll_interval_minutes * 60)
-    if interval < 10:
-        interval = DEFAULT_POLL_INTERVAL
+    if poll_interval is not None:
+        interval = max(5, poll_interval)  # explicit override — allow as low as 5s
+    else:
+        interval = int(config.poll_interval_minutes * 60)
+        if interval < 10:
+            interval = DEFAULT_POLL_INTERVAL
 
     logger.info("Heartbeat loop starting (interval=%ds, config=%s)", interval, config_path)
 
@@ -50,28 +54,47 @@ def run_heartbeat_loop(
 
         try:
             result = run_heartbeat(config_path)
-            logger.info(
-                "Heartbeat tick: %d issues, %d decisions, %d launched",
-                result.get("issue_count", 0),
-                result.get("decision_count", 0),
-                result.get("launched_count", 0),
-            )
+            issues = result.get("issue_count", 0)
+            launched = result.get("launched_count", 0)
+            statuses = result.get("watched_statuses", [])
+            reconciled = len(result.get("reconciled", []))
+
+            parts = [f"{issues} ticket{'s' if issues != 1 else ''} in {', '.join(statuses)}"]
+            if launched:
+                parts.append(f"{launched} launched")
+            if reconciled:
+                parts.append(f"{reconciled} reconciled")
+            logger.info("Tick: %s | next in %ds", " | ".join(parts), interval)
 
             # Best-effort cloud reporting
             try:
+                api_key = _api_key()
+                cloud_board_id = 0
+                if api_key and config.board_id:
+                    resolved = _resolve_cloud_board_id(api_key, config.board_id)
+                    if resolved:
+                        cloud_board_id = int(resolved)
+
                 tickets = [
                     {"key": d.get("issue_key"), "status": d.get("status_name")}
                     for d in result.get("decisions", [])
                 ]
                 launches = [
-                    {"session_id": l.get("session_name"), "ticket_key": l.get("issue_key")}
+                    {
+                        "session_id": l.get("session_name", ""),
+                        "ticket_key": l.get("issue_key", ""),
+                        "ticket_summary": l.get("prompt", "")[:200],
+                        "prompt": l.get("prompt", "")[:500],
+                    }
                     for l in result.get("launches", [])
+                    if l.get("state") == "running"
                 ]
-                report_heartbeat(
-                    board_id=0,  # cloud assigns board ID during registration
-                    tickets_found=tickets,
-                    sessions_launched=launches,
-                )
+                if cloud_board_id:
+                    report_heartbeat(
+                        board_id=cloud_board_id,
+                        tickets_found=tickets,
+                        sessions_launched=launches,
+                    )
             except Exception as exc:
                 logger.debug("Cloud heartbeat report failed (non-fatal): %s", exc)
 
