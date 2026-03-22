@@ -77,9 +77,9 @@ def start_agent(
     if github_users:
         for user in github_users:
             cmd_parts.extend(["--github-user", user])
-    cmd_parts.extend(["--", "bash", "-c", "echo 'Agent is running. Ctrl-C to stop.'; sleep infinity"])
+    cmd_parts.extend(["--", "bash", "-c", "echo 'Agent is running. Ctrl-C to stop.'; while true; do sleep 86400; done"])
 
-    shell_cmd = shlex.join(cmd_parts) + f" 2>&1 | tee {LOG_FILE}; sleep 999"
+    shell_cmd = shlex.join(cmd_parts) + f" 2>&1 | tee {LOG_FILE}; echo 'Upterm exited.'; while true; do sleep 86400; done"
 
     # Launch in a tmux session
     subprocess.run(
@@ -128,8 +128,11 @@ def start_agent(
         logger.info("Received signal %s, shutting down...", sig)
         stop_event.set()
 
-    signal.signal(signal.SIGINT, _signal_handler)
-    signal.signal(signal.SIGTERM, _signal_handler)
+    try:
+        signal.signal(signal.SIGINT, _signal_handler)
+        signal.signal(signal.SIGTERM, _signal_handler)
+    except ValueError:
+        pass  # Not in main thread — signals handled by parent
 
     # Start heartbeat in background thread
     heartbeat_thread = threading.Thread(

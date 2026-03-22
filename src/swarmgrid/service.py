@@ -312,13 +312,15 @@ def get_status(config_path: str | Path) -> dict:
     summary["recent_runs"] = store.list_recent_process_runs()
     summary["archived_count"] = len(store.list_archived_processes(limit=200))
 
-    # Check if background heartbeat is running
+    # Check if agent or heartbeat is running
     import subprocess as _sp
-    hb_check = _sp.run(
-        ["tmux", "has-session", "-t", "swarmgrid-heartbeat"],
-        check=False, capture_output=True,
-    )
-    summary["heartbeat_daemon"] = "running" if hb_check.returncode == 0 else "stopped"
+    agent_running = False
+    for session in ["swarmgrid-agent-wrapper", "swarmgrid-agent", "swarmgrid-heartbeat"]:
+        check = _sp.run(["tmux", "has-session", "-t", session], check=False, capture_output=True)
+        if check.returncode == 0:
+            agent_running = True
+            break
+    summary["heartbeat_daemon"] = "running" if agent_running else "stopped"
 
     # Last heartbeat tick
     try:

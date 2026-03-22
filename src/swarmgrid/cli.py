@@ -195,7 +195,7 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "stop":
         import subprocess
         stopped = False
-        for session in ["swarmgrid-agent", "swarmgrid-heartbeat"]:
+        for session in ["swarmgrid-agent-wrapper", "swarmgrid-agent", "swarmgrid-heartbeat"]:
             result = subprocess.run(
                 ["tmux", "kill-session", "-t", session],
                 check=False, capture_output=True,
@@ -294,9 +294,9 @@ def main(argv: list[str] | None = None) -> int:
             routes = output.get("routes", [])
             print(f"SwarmGrid Status")
             if daemon == "stopped":
-                print(f"  Heartbeat daemon: {daemon}  (start with: swarmgrid heartbeat --background)")
+                print(f"  Agent: {daemon}  (start with: swarmgrid agent --background)")
             else:
-                print(f"  Heartbeat daemon: {daemon}")
+                print(f"  Agent: {daemon}")
             print(f"  Route source: {source}")
             print(f"  Watching: {', '.join(statuses) if statuses else '(none)'}")
             print(f"  Running sessions: {running}")
@@ -363,40 +363,36 @@ def main(argv: list[str] | None = None) -> int:
         import logging as _logging
         _logging.basicConfig(level=_logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s", datefmt="%H:%M:%S")
 
+        from .agent.daemon import start_agent, _parse_connect_string
+
         if args.background:
-            # Run agent in a tmux session
-            import shutil
+            # Launch `swarmgrid agent` foreground inside a wrapper tmux session
+            import shutil, subprocess, time
             if not shutil.which("tmux"):
-                print("Error: tmux required for --background mode")
+                print("Error: tmux required")
                 return 1
-            import subprocess
-            session_name = "swarmgrid-agent"
-            subprocess.run(["tmux", "kill-session", "-t", session_name], check=False, capture_output=True)
-            abs_config = str(Path(args.config).resolve()) if hasattr(args, 'config') else "board-routes.yaml"
-            abs_config = str(Path(abs_config).resolve())
+            wrapper = "swarmgrid-agent-wrapper"
+            subprocess.run(["tmux", "kill-session", "-t", wrapper], check=False, capture_output=True)
+            abs_config = str(Path(args.config).resolve())
             sg_bin = str(Path(sys.executable).parent / "swarmgrid")
             server_flag = f" --server {args.server}" if args.server != "ssh://uptermd.upterm.dev:22" else ""
             github_flags = " ".join(f"--github-user {u}" for u in (args.github_users or []))
-            cmd = f"{sg_bin} agent --config {abs_config}{server_flag} {github_flags}; echo 'Agent stopped.'; sleep 999"
+            cmd = f"{sg_bin} agent --config {abs_config}{server_flag} {github_flags}"
             subprocess.run([
-                "tmux", "new-session", "-d", "-s", session_name, "-c", str(Path(abs_config).parent), cmd
+                "tmux", "new-session", "-d", "-s", wrapper, "-c", str(Path(abs_config).parent), cmd
             ], check=True)
-            print(f"SwarmGrid agent running in background (tmux session: {session_name})")
-            print(f"  Upterm + heartbeat + incoming commands")
-            print(f"  Attach: tmux attach -t {session_name}")
-            print(f"  Stop:   swarmgrid stop")
-
-            # Wait for upterm to establish and show connect string
-            import time
-            time.sleep(5)
-            from .agent.daemon import _parse_connect_string
+            # Wait for upterm to establish
+            time.sleep(6)
             connect = _parse_connect_string()
+            print(f"SwarmGrid agent running in background")
+            print(f"  Upterm + heartbeat + incoming commands")
             if connect:
                 print(f"  SSH:    {connect}")
+            print(f"  Logs:   tmux attach -t {wrapper}")
+            print(f"  Stop:   swarmgrid stop")
             return 0
 
-        from .agent.daemon import start_agent
-
+        # Foreground — blocks until Ctrl-C
         result = start_agent(
             config_path=args.config,
             upterm_server=args.server,
