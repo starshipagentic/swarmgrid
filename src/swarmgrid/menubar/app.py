@@ -202,8 +202,7 @@ class SwarmGridApp(rumps.App):
                 ticket = _ticket_key_from_session(sid)
                 icon = "\u2739" if state == "running" else "\u25cc"
                 item_title = f"{ticket} {icon} {state}"
-                item = rumps.MenuItem(item_title, callback=None)
-                item.set_callback(None)
+                item = rumps.MenuItem(item_title, callback=self._make_session_callback(sid))
                 # Insert after status item
                 self.menu.insert_after(self._status_item.title, item)
         else:
@@ -212,6 +211,18 @@ class SwarmGridApp(rumps.App):
                 placeholder = rumps.MenuItem("No active tickets", callback=None)
                 placeholder.set_callback(None)
                 self.menu.insert_after(self._status_item.title, placeholder)
+
+    def _make_session_callback(self, session_id):
+        """Return a callback that opens iTerm2 attached to a tmux session."""
+        def _cb(_sender):
+            from ..runner import open_session_in_terminal
+            opened = open_session_in_terminal({"session_name": session_id})
+            if not opened:
+                # Fallback: copy attach command to clipboard
+                cmd = f"tmux attach -t {session_id}"
+                subprocess.run(["pbcopy"], input=cmd.encode(), check=False)
+                rumps.notification("SwarmGrid", "Copied to clipboard", cmd)
+        return _cb
 
     def _open_dashboard(self, _sender):
         webbrowser.open(DASHBOARD_URL)
