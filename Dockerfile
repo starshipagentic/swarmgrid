@@ -10,7 +10,7 @@ COPY pyproject.toml .
 COPY src/ src/
 RUN pip install --no-cache-dir .
 
-RUN mkdir -p /data
+RUN mkdir -p /data/.ssh && chmod 700 /data/.ssh
 
 EXPOSE 8080
 

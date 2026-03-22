@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import subprocess
 
 logger = logging.getLogger(__name__)
@@ -32,7 +33,10 @@ def send_command(ssh_connect: str, command: dict, timeout: int = 30) -> dict:
     try:
         # upterm requires PTY (-tt) and stdin must stay open briefly.
         # Use bash process substitution to feed the JSON and keep connection alive.
-        bash_cmd = f"ssh -tt -o StrictHostKeyChecking=no -o ConnectTimeout=10 {' '.join(ssh_args)} < <(echo '{cmd_json}'; sleep 2)"
+        # -i identifies the cloud with its persistent SSH key (for --authorized-keys on edge).
+        key_path = "/data/.ssh/id_ed25519"
+        identity_flag = f"-i {key_path}" if os.path.exists(key_path) else ""
+        bash_cmd = f"ssh -tt -o StrictHostKeyChecking=no -o ConnectTimeout=10 {identity_flag} {' '.join(ssh_args)} < <(echo '{cmd_json}'; sleep 2)"
         result = subprocess.run(
             ["bash", "-c", bash_cmd],
             capture_output=True,

@@ -25,7 +25,7 @@ import threading
 from pathlib import Path
 from typing import Any
 
-from .registration import register_edge, report_offline
+from .registration import fetch_authorized_keys, register_edge, report_offline
 
 logger = logging.getLogger(__name__)
 
@@ -67,6 +67,33 @@ def start_agent(
         python_path = sys.executable or shutil.which("python3") or "python3"
     force_cmd = f"{python_path} -m swarmgrid.agent.worker"
 
+    # Fetch authorized_keys from the cloud so only the cloud + teammates can connect
+    auth_keys_path = Path.home() / ".swarmgrid" / "authorized_keys"
+    auth_data = fetch_authorized_keys()
+    cloud_keys = auth_data.get("authorized_keys", [])
+    cloud_github_users = auth_data.get("github_users", [])
+
+    # Merge cloud-provided github_users with any passed via CLI
+    all_github_users = list(github_users or [])
+    for gu in cloud_github_users:
+        if gu not in all_github_users:
+            all_github_users.append(gu)
+
+    use_authorized_keys = bool(cloud_keys)
+
+    if use_authorized_keys:
+        # Write the authorized_keys file
+        auth_keys_path.parent.mkdir(parents=True, exist_ok=True)
+        auth_keys_path.write_text("\n".join(cloud_keys) + "\n")
+        os.chmod(str(auth_keys_path), 0o600)
+        logger.info(
+            "Wrote %d authorized key(s) to %s", len(cloud_keys), auth_keys_path
+        )
+    else:
+        logger.warning(
+            "No authorized keys from cloud — falling back to --accept (anyone can connect)"
+        )
+
     cmd_parts = [
         "upterm", "host",
         "--accept",
@@ -74,8 +101,11 @@ def start_agent(
         "--server", upterm_server,
         "--force-command", force_cmd,
     ]
-    if github_users:
-        for user in github_users:
+    if use_authorized_keys:
+        cmd_parts.extend(["--authorized-keys", str(auth_keys_path)])
+
+    if all_github_users:
+        for user in all_github_users:
             cmd_parts.extend(["--github-user", user])
     cmd_parts.extend(["--", "bash", "-c", "echo 'Agent is running. Ctrl-C to stop.'; while true; do sleep 86400; done"])
 

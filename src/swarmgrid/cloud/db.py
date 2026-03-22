@@ -110,6 +110,22 @@ class Board(Base):
     routes = relationship("Route", back_populates="board", cascade="all, delete-orphan")
     sessions = relationship("AgentSession", back_populates="board")
     templates = relationship("Template", back_populates="board")
+    members = relationship("BoardMember", back_populates="board", cascade="all, delete-orphan")
+
+
+# ── Board Members ─────────────────────────────────────────────────────
+
+class BoardMember(Base):
+    __tablename__ = "board_members"
+    __table_args__ = (UniqueConstraint("board_id", "github_login"),)
+
+    id = Column(Integer, primary_key=True)
+    board_id = Column(Integer, ForeignKey("boards.id"), nullable=False)
+    github_login = Column(String(255), nullable=False)  # GitHub username
+    added_by = Column(Integer, ForeignKey("users.id"), nullable=True)
+    added_at = Column(DateTime, default=utc_now)
+
+    board = relationship("Board", back_populates="members")
 
 
 # ── Routes ─────────────────────────────────────────────────────────────

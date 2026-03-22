@@ -9,9 +9,13 @@ Environment variables:
     GITHUB_CLIENT_SECRET  — GitHub OAuth app client secret
     JWT_SECRET            — Secret for signing JWT tokens
     JWT_EXPIRY_HOURS      — Token expiry (default: 72)
+    CLOUD_SSH_PRIVATE_KEY — Base64-encoded ed25519 private key for SSH to edge agents
 """
 from __future__ import annotations
+import base64
+import logging
 import os
+import stat
 
 
 from contextlib import asynccontextmanager
@@ -121,10 +125,69 @@ def _seed_global_templates():
         db.close()
 
 
+SSH_DIR = "/data/.ssh"
+SSH_KEY_PATH = os.path.join(SSH_DIR, "id_ed25519")
+SSH_PUB_PATH = os.path.join(SSH_DIR, "id_ed25519.pub")
+
+_log = logging.getLogger(__name__)
+
+
+def _setup_cloud_ssh_key():
+    """Write (or generate) the cloud's SSH keypair at startup.
+
+    If CLOUD_SSH_PRIVATE_KEY is set (base64-encoded PEM), decode and write it.
+    Otherwise generate a throwaway keypair for local dev.
+    """
+    from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+    from cryptography.hazmat.primitives import serialization
+    from cryptography.exceptions import UnsupportedAlgorithm
+
+    os.makedirs(SSH_DIR, mode=0o700, exist_ok=True)
+
+    env_key = os.environ.get("CLOUD_SSH_PRIVATE_KEY", "")
+
+    if env_key:
+        # Decode base64 → key bytes (could be PEM or OpenSSH format)
+        key_bytes = base64.b64decode(env_key)
+        try:
+            private_key = serialization.load_ssh_private_key(key_bytes, password=None)
+        except (ValueError, UnsupportedAlgorithm):
+            private_key = serialization.load_pem_private_key(key_bytes, password=None)
+        _log.info("Cloud SSH key loaded from CLOUD_SSH_PRIVATE_KEY env var")
+    else:
+        # Dev mode — generate ephemeral keypair
+        private_key = Ed25519PrivateKey.generate()
+        _log.warning("No CLOUD_SSH_PRIVATE_KEY set — generated ephemeral SSH keypair (dev only)")
+
+    # Write private key
+    priv_pem = private_key.private_bytes(
+        encoding=serialization.Encoding.PEM,
+        format=serialization.PrivateFormat.OpenSSH,
+        encryption_algorithm=serialization.NoEncryption(),
+    )
+    with open(SSH_KEY_PATH, "wb") as f:
+        f.write(priv_pem)
+    os.chmod(SSH_KEY_PATH, stat.S_IRUSR | stat.S_IWUSR)  # 0o600
+
+    # Derive and write public key
+    pub_key = private_key.public_key()
+    pub_bytes = pub_key.public_bytes(
+        encoding=serialization.Encoding.OpenSSH,
+        format=serialization.PublicFormat.OpenSSH,
+    )
+    with open(SSH_PUB_PATH, "wb") as f:
+        f.write(pub_bytes)
+        f.write(b"\n")
+    os.chmod(SSH_PUB_PATH, stat.S_IRUSR | stat.S_IWUSR | stat.S_IRGRP | stat.S_IROTH)  # 0o644
+
+    _log.info("Cloud SSH public key: %s", pub_bytes.decode())
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     create_tables()
     _seed_global_templates()
+    _setup_cloud_ssh_key()
     yield
 
 

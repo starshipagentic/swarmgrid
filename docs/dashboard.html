@@ -331,6 +331,81 @@
       justify-content: space-between;
     }
 
+    /* Board access section */
+    .board-access {
+      margin-bottom: 20px;
+      padding: 16px;
+      background: var(--panel-2);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+    }
+    .board-access h3 {
+      font-size: 14px;
+      font-weight: 700;
+      margin: 0 0 4px 0;
+    }
+    .board-access .ba-subtitle {
+      font-size: 11px;
+      color: var(--muted);
+      margin-bottom: 12px;
+    }
+    .board-access .ba-add {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 12px;
+    }
+    .board-access .ba-add input {
+      flex: 1;
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      color: var(--text);
+      font-family: inherit;
+      font-size: 13px;
+      padding: 6px 10px;
+    }
+    .board-access .ba-add button {
+      padding: 6px 14px;
+      font-size: 12px;
+    }
+    .ba-members {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+    .ba-chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 4px 10px 4px 12px;
+      font-size: 13px;
+      color: var(--text);
+    }
+    .ba-chip .ba-login {
+      color: var(--accent);
+      font-weight: 600;
+    }
+    .ba-chip .ba-remove {
+      cursor: pointer;
+      color: var(--muted);
+      font-size: 14px;
+      line-height: 1;
+      padding: 0 2px;
+      border-radius: 50%;
+      transition: color .15s;
+    }
+    .ba-chip .ba-remove:hover {
+      color: var(--orange);
+    }
+    .ba-empty {
+      font-size: 12px;
+      color: var(--muted);
+      padding: 4px 0;
+    }
+
     /* Templates view */
     .template-section {
       margin-bottom: 24px;
@@ -945,12 +1020,14 @@
       el.innerHTML = '<div class="spinner"></div>';
 
       // Fetch everything in parallel
-      const [nodes, teams, snapshot] = await Promise.all([
+      const [nodes, teams, snapshot, boardMembersData] = await Promise.all([
         api('/api/edge/nodes'),
         api('/api/teams'),
         currentBoardId ? api(`/api/boards/${currentBoardId}/snapshot`) : null,
+        currentBoardId ? api(`/api/boards/${currentBoardId}/members`) : null,
       ]);
       if (!nodes && !teams) return;
+      const boardMembers = boardMembersData && boardMembersData.members ? boardMembersData.members : [];
 
       const nodeList = Array.isArray(nodes) ? nodes : (nodes && nodes.nodes ? nodes.nodes : []);
       const teamList = Array.isArray(teams) ? teams : (teams && teams.teams ? teams.teams : []);
@@ -990,6 +1067,25 @@
       html += `<div class="team-stat"><div class="stat-value">${completedSessions}</div><div class="stat-label">Completed</div></div>`;
       if (failedSessions) html += `<div class="team-stat"><div class="stat-value" style="color:var(--orange)">${failedSessions}</div><div class="stat-label">Failed</div></div>`;
       html += '</div>';
+
+      // Board Access section — per-board GitHub user management
+      if (currentBoardId) {
+        const boardName = boards.find(b => String(b.id) === String(currentBoardId));
+        const bName = boardName ? boardName.name : 'this board';
+        html += '<div class="board-access">';
+        html += `<h3>Board Access</h3>`;
+        html += `<div class="ba-subtitle">GitHub users who can join upterm sessions on ${esc(bName)}. The board owner always has access.</div>`;
+        html += '<div class="ba-add"><input type="text" id="ba-input" placeholder="GitHub username, e.g. karthik"><button class="btn-save" id="ba-add-btn">Add</button></div>';
+        html += '<div class="ba-members" id="ba-members">';
+        if (boardMembers.length) {
+          boardMembers.forEach(m => {
+            html += `<span class="ba-chip"><span class="ba-login">@${esc(m.github_login)}</span><span class="ba-remove" title="Remove" data-login="${esc(m.github_login)}">&times;</span></span>`;
+          });
+        } else {
+          html += '<div class="ba-empty">No board members yet — add GitHub usernames to grant upterm access.</div>';
+        }
+        html += '</div></div>';
+      }
 
       html += '<div class="team-grid">';
 
@@ -1050,6 +1146,43 @@
 
       html += '</div>';
       el.innerHTML = html;
+
+      // Board Access event listeners
+      if (currentBoardId) {
+        const addBtn = document.getElementById('ba-add-btn');
+        const addInput = document.getElementById('ba-input');
+        if (addBtn && addInput) {
+          const doAdd = async () => {
+            const login = addInput.value.trim().replace(/^@/, '');
+            if (!login) return;
+            addBtn.disabled = true;
+            addBtn.textContent = '...';
+            const res = await api(`/api/boards/${currentBoardId}/members`, {
+              method: 'POST',
+              body: JSON.stringify({ github_login: login }),
+            });
+            if (res && res.ok) {
+              loadTeam();
+            } else {
+              addBtn.disabled = false;
+              addBtn.textContent = 'Add';
+              addInput.style.borderColor = 'var(--orange)';
+              setTimeout(() => { addInput.style.borderColor = ''; }, 1500);
+            }
+          };
+          addBtn.addEventListener('click', doAdd);
+          addInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') doAdd(); });
+        }
+        document.querySelectorAll('.ba-remove').forEach(btn => {
+          btn.addEventListener('click', async () => {
+            const login = btn.dataset.login;
+            if (!login) return;
+            btn.style.opacity = '0.3';
+            await api(`/api/boards/${currentBoardId}/members/${encodeURIComponent(login)}`, { method: 'DELETE' });
+            loadTeam();
+          });
+        });
+      }
     }
 
     // ── TEMPLATES TAB ──────────────────────────────────────

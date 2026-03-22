@@ -12,7 +12,7 @@ logger = logging.getLogger(__name__)
 
 from .auth import get_current_user
 from .crypto import encrypt, decrypt
-from .db import Board, Route, SessionLocal, Team, TeamMember, User, AgentSession
+from .db import Board, BoardMember, Route, SessionLocal, Team, TeamMember, User, AgentSession
 
 router = APIRouter(prefix="/api/boards", tags=["boards"])
 
@@ -57,6 +57,10 @@ class RouteUpdate(BaseModel):
     transition_on_failure: str | None = None
     allowed_issue_types: list[str] | None = None
     enabled: bool | None = None
+
+
+class MemberAdd(BaseModel):
+    github_login: str
 
 
 # ── Helpers ────────────────────────────────────────────────────────────
@@ -452,6 +456,82 @@ def delete_route(board_id: int, status: str, user: User = Depends(get_current_us
         if not route:
             raise HTTPException(status_code=404, detail=f"No route for status '{status}'")
         db.delete(route)
+        db.commit()
+        return {"ok": True}
+    finally:
+        db.close()
+
+
+# ── Board Members (GitHub usernames) ──────────────────────────────────
+
+@router.get("/{board_id}/members")
+def list_board_members(board_id: int, user: User = Depends(get_current_user)):
+    _require_board_access(board_id, user)
+    db = SessionLocal()
+    try:
+        members = db.query(BoardMember).filter(BoardMember.board_id == board_id).all()
+        return {
+            "members": [
+                {
+                    "id": m.id,
+                    "github_login": m.github_login,
+                    "added_at": m.added_at.isoformat() if m.added_at else None,
+                }
+                for m in members
+            ]
+        }
+    finally:
+        db.close()
+
+
+@router.post("/{board_id}/members", status_code=201)
+def add_board_member(board_id: int, body: MemberAdd, user: User = Depends(get_current_user)):
+    _require_board_access(board_id, user)
+    login = body.github_login.strip().lstrip("@").lower()
+    if not login:
+        raise HTTPException(status_code=400, detail="github_login is required")
+    db = SessionLocal()
+    try:
+        existing = (
+            db.query(BoardMember)
+            .filter(BoardMember.board_id == board_id, BoardMember.github_login == login)
+            .first()
+        )
+        if existing:
+            raise HTTPException(status_code=409, detail=f"'{login}' is already a member of this board")
+        member = BoardMember(
+            board_id=board_id,
+            github_login=login,
+            added_by=user.id,
+        )
+        db.add(member)
+        db.commit()
+        db.refresh(member)
+        return {
+            "ok": True,
+            "member": {
+                "id": member.id,
+                "github_login": member.github_login,
+                "added_at": member.added_at.isoformat() if member.added_at else None,
+            },
+        }
+    finally:
+        db.close()
+
+
+@router.delete("/{board_id}/members/{github_login}")
+def remove_board_member(board_id: int, github_login: str, user: User = Depends(get_current_user)):
+    _require_board_access(board_id, user)
+    db = SessionLocal()
+    try:
+        member = (
+            db.query(BoardMember)
+            .filter(BoardMember.board_id == board_id, BoardMember.github_login == github_login.lower())
+            .first()
+        )
+        if not member:
+            raise HTTPException(status_code=404, detail=f"'{github_login}' is not a member of this board")
+        db.delete(member)
         db.commit()
         return {"ok": True}
     finally:

@@ -1,11 +1,13 @@
 """Edge node registration, status reporting, and command dispatch."""
 from __future__ import annotations
 
+from pathlib import Path
+
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
 from .auth import get_current_user
-from .db import AgentSession, EdgeNode, SessionLocal, User, utc_now
+from .db import AgentSession, Board, BoardMember, EdgeNode, SessionLocal, TeamMember, User, utc_now
 from .heartbeat_coordinator import assign_heartbeat_if_needed
 
 router = APIRouter(prefix="/api/edge", tags=["edge"])
@@ -39,6 +41,78 @@ class SessionInfo(BaseModel):
     id: str
     state: str
     output_lines: int = 0
+
+
+# ── Cloud public key (no auth — agents need this during setup) ─────────
+
+@router.get("/cloud-public-key")
+def cloud_public_key():
+    """Return the cloud server's SSH public key.
+
+    Edge agents use this to populate --authorized-keys so only the
+    cloud (and explicitly added teammates) can SSH into sessions.
+    """
+    pub_path = Path("/data/.ssh/id_ed25519.pub")
+    if not pub_path.exists():
+        raise HTTPException(status_code=503, detail="Cloud SSH key not yet initialized")
+    public_key = pub_path.read_text().strip()
+    return {"public_key": public_key}
+
+
+# ── Authorized keys (auth required) ───────────────────────────────────
+
+@router.get("/authorized-keys")
+def get_authorized_keys(user: User = Depends(get_current_user)):
+    """Return SSH authorized_keys + github_users for this user's agent.
+
+    The agent calls this on startup to build ~/.swarmgrid/authorized_keys
+    so upterm restricts connections to the cloud key and teammates only.
+    """
+    from .db import TeamMember
+
+    authorized_keys: list[str] = []
+    github_users: list[str] = []
+
+    # 1. Always include the cloud's own public key
+    cloud_pub_path = Path("/data/.ssh/id_ed25519.pub")
+    try:
+        cloud_key = cloud_pub_path.read_text().strip()
+        if cloud_key:
+            authorized_keys.append(cloud_key)
+    except FileNotFoundError:
+        pass  # Cloud key not yet generated — shouldn't happen in prod
+
+    # 2. Collect github_logins for all teammates on this user's teams
+    db = SessionLocal()
+    try:
+        user_team_ids = [
+            m.team_id
+            for m in db.query(TeamMember).filter(TeamMember.user_id == user.id).all()
+        ]
+        if user_team_ids:
+            teammates = (
+                db.query(User)
+                .join(TeamMember, TeamMember.user_id == User.id)
+                .filter(
+                    TeamMember.team_id.in_(user_team_ids),
+                    User.id != user.id,
+                )
+                .all()
+            )
+            for t in teammates:
+                if t.github_login and t.github_login not in github_users:
+                    github_users.append(t.github_login)
+
+        # Future: when User model has ssh_public_key column, collect those
+        # into authorized_keys as well.
+
+    finally:
+        db.close()
+
+    return {
+        "authorized_keys": authorized_keys,
+        "github_users": github_users,
+    }
 
 
 # ── Registration ───────────────────────────────────────────────────────
@@ -179,7 +253,6 @@ def list_edge_nodes(user: User = Depends(get_current_user)):
     """List edge nodes visible to the current user (own + teammates')."""
     db = SessionLocal()
     try:
-        from .db import TeamMember
         # Get all team IDs for this user
         team_ids = [m.team_id for m in db.query(TeamMember).filter(TeamMember.user_id == user.id).all()]
         if not team_ids:
@@ -252,5 +325,31 @@ def capture_session_output(session_id: str, user: User = Depends(get_current_use
         from .relay import capture_output
         result = capture_output(node.ssh_connect, session_id)
         return result
+    finally:
+        db.close()
+
+
+@router.get("/github-users")
+def get_github_users(user: User = Depends(get_current_user)):
+    """Return all unique github_logins across all boards owned by the current user.
+
+    Used by the agent to build the --github-user list for upterm sessions.
+    """
+    db = SessionLocal()
+    try:
+        # Find all teams the user belongs to
+        team_ids = [m.team_id for m in db.query(TeamMember).filter(TeamMember.user_id == user.id).all()]
+        if not team_ids:
+            return {"github_users": []}
+
+        # Find all boards in those teams
+        board_ids = [b.id for b in db.query(Board).filter(Board.team_id.in_(team_ids)).all()]
+        if not board_ids:
+            return {"github_users": []}
+
+        # Collect unique github_logins from board members
+        members = db.query(BoardMember).filter(BoardMember.board_id.in_(board_ids)).all()
+        logins = sorted(set(m.github_login for m in members))
+        return {"github_users": logins}
     finally:
         db.close()
