@@ -194,14 +194,23 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.command == "stop":
         import subprocess
-        result = subprocess.run(
-            ["tmux", "kill-session", "-t", "swarmgrid-heartbeat"],
-            check=False, capture_output=True,
-        )
-        if result.returncode == 0:
-            print("Heartbeat stopped.")
-        else:
-            print("No heartbeat running.")
+        stopped = False
+        for session in ["swarmgrid-agent", "swarmgrid-heartbeat"]:
+            result = subprocess.run(
+                ["tmux", "kill-session", "-t", session],
+                check=False, capture_output=True,
+            )
+            if result.returncode == 0:
+                print(f"Stopped {session}.")
+                stopped = True
+        # Report offline to cloud
+        try:
+            from .agent.registration import report_offline
+            report_offline()
+        except Exception:
+            pass
+        if not stopped:
+            print("No agent running.")
         return 0
 
     if args.command == "heartbeat":
@@ -351,13 +360,48 @@ def main(argv: list[str] | None = None) -> int:
             return 0
 
     if args.command == "agent":
+        import logging as _logging
+        _logging.basicConfig(level=_logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s", datefmt="%H:%M:%S")
+
+        if args.background:
+            # Run agent in a tmux session
+            import shutil
+            if not shutil.which("tmux"):
+                print("Error: tmux required for --background mode")
+                return 1
+            import subprocess
+            session_name = "swarmgrid-agent"
+            subprocess.run(["tmux", "kill-session", "-t", session_name], check=False, capture_output=True)
+            abs_config = str(Path(args.config).resolve()) if hasattr(args, 'config') else "board-routes.yaml"
+            abs_config = str(Path(abs_config).resolve())
+            sg_bin = str(Path(sys.executable).parent / "swarmgrid")
+            server_flag = f" --server {args.server}" if args.server != "ssh://uptermd.upterm.dev:22" else ""
+            github_flags = " ".join(f"--github-user {u}" for u in (args.github_users or []))
+            cmd = f"{sg_bin} agent --config {abs_config}{server_flag} {github_flags}; echo 'Agent stopped.'; sleep 999"
+            subprocess.run([
+                "tmux", "new-session", "-d", "-s", session_name, "-c", str(Path(abs_config).parent), cmd
+            ], check=True)
+            print(f"SwarmGrid agent running in background (tmux session: {session_name})")
+            print(f"  Upterm + heartbeat + incoming commands")
+            print(f"  Attach: tmux attach -t {session_name}")
+            print(f"  Stop:   swarmgrid stop")
+
+            # Wait for upterm to establish and show connect string
+            import time
+            time.sleep(5)
+            from .agent.daemon import _parse_connect_string
+            connect = _parse_connect_string()
+            if connect:
+                print(f"  SSH:    {connect}")
+            return 0
+
         from .agent.daemon import start_agent
 
         result = start_agent(
             config_path=args.config,
             upterm_server=args.server,
             github_users=args.github_users,
-            foreground=not args.background,
+            foreground=True,
         )
         print(json.dumps(result, indent=2))
         return 0
