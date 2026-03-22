@@ -67,7 +67,8 @@ def start_agent(
         python_path = sys.executable or shutil.which("python3") or "python3"
     force_cmd = f"{python_path} -m swarmgrid.agent.worker"
 
-    # Fetch authorized_keys from the cloud so only the cloud + teammates can connect
+    # Fetch authorized_keys from the cloud so only the cloud + teammates can connect.
+    # If cloud is down, use the cached file from the last successful fetch.
     auth_keys_path = Path.home() / ".swarmgrid" / "authorized_keys"
     auth_data = fetch_authorized_keys()
     cloud_keys = auth_data.get("authorized_keys", [])
@@ -79,20 +80,26 @@ def start_agent(
         if gu not in all_github_users:
             all_github_users.append(gu)
 
-    use_authorized_keys = bool(cloud_keys)
-
-    if use_authorized_keys:
-        # Write the authorized_keys file
+    if cloud_keys:
+        # Fresh keys from cloud — write them
         auth_keys_path.parent.mkdir(parents=True, exist_ok=True)
         auth_keys_path.write_text("\n".join(cloud_keys) + "\n")
         os.chmod(str(auth_keys_path), 0o600)
         logger.info(
             "Wrote %d authorized key(s) to %s", len(cloud_keys), auth_keys_path
         )
-    else:
+    elif auth_keys_path.exists():
+        # Cloud unreachable but we have cached keys from last time — use those
         logger.warning(
-            "No authorized keys from cloud — falling back to --accept (anyone can connect)"
+            "Cloud unreachable — using cached authorized_keys from %s", auth_keys_path
         )
+    else:
+        # True first startup with no cloud — no keys at all
+        logger.warning(
+            "No authorized keys (first startup, cloud unreachable) — running without --authorized-keys"
+        )
+
+    use_authorized_keys = auth_keys_path.exists()
 
     cmd_parts = [
         "upterm", "host",
