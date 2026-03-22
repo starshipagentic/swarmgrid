@@ -315,7 +315,7 @@ def get_status(config_path: str | Path) -> dict:
     # Check if agent or heartbeat is running
     import subprocess as _sp
     agent_running = False
-    for session in ["swarmgrid-agent-wrapper", "swarmgrid-agent", "swarmgrid-heartbeat"]:
+    for session in ["swarmgrid-agent-bg", "swarmgrid-agent-wrapper", "swarmgrid-agent", "swarmgrid-heartbeat"]:
         check = _sp.run(["tmux", "has-session", "-t", session], check=False, capture_output=True)
         if check.returncode == 0:
             agent_running = True

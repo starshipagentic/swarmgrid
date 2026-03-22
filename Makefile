@@ -52,7 +52,7 @@ status:
 
 # Watch agent output live
 logs:
-	tmux attach -t swarmgrid-agent
+	tmux attach -t swarmgrid-agent-bg
 
 # Deploy to Fly.io
 deploy:
