@@ -75,12 +75,16 @@ If someone got a copy of the SQLite database file (but NOT the env vars):
 
 | Data | What they'd see | Can they use it? |
 |---|---|---|
-| Jira email | Scrambled gibberish | No — need JWT_SECRET to unscramble |
-| Jira API token | Scrambled gibberish | No — need JWT_SECRET to unscramble |
-| SSH connect string | Plain text like `ssh abc123@uptermd.upterm.dev` | No — need the cloud's SSH private key to connect |
-| Route configs | Plain text "Droid-Do -> /solve" | No — this just describes your workflow |
-| Session records | Plain text ticket keys and prompts | No — just shows what you worked on |
-| GitHub usernames | Plain text | No — these are public info anyway |
+| Jira email | Scrambled gibberish | No — need ENCRYPTION_KEY to unscramble |
+| Jira API token | Scrambled gibberish | No — need ENCRYPTION_KEY to unscramble |
+| SSH connect string | Scrambled gibberish | No — need ENCRYPTION_KEY to unscramble, AND the cloud's SSH private key to use it |
+| Route prompt_template | Scrambled gibberish | No — need ENCRYPTION_KEY. Could contain user secrets in prompts |
+| Template prompt_template | Scrambled gibberish | No — need ENCRYPTION_KEY. Could contain user secrets in prompts |
+| Session prompts | Scrambled gibberish | No — need ENCRYPTION_KEY. Users put credentials in prompts |
+| Session output | Scrambled gibberish | No — need ENCRYPTION_KEY. Claude output may echo secrets |
+| Route status/action names | Plain text "Droid-Do -> /solve" | Just labels, not sensitive |
+| Board names, ticket keys | Plain text | Just metadata |
+| GitHub usernames | Plain text | Public info anyway |
 
 **A database-only leak is actually pretty safe.** The two dangerous things
 (Jira creds and connect strings) are both protected by a second factor
@@ -125,35 +129,27 @@ session token).
 
 ---
 
-## The One Thing I'd Fix
+## Key Split — DONE (2026-03-22)
 
-Right now JWT_SECRET does two jobs: authentication AND encryption.
-If we split those into two separate secrets:
+JWT_SECRET and ENCRYPTION_KEY are now separate:
 
 ```
 JWT_SECRET          → only signs login tokens
-ENCRYPTION_KEY      → only encrypts Jira creds
+ENCRYPTION_KEY      → only encrypts data in the database
 ```
 
-Then if JWT_SECRET leaks:
+If JWT_SECRET leaks:
 - Attacker can mint fake tokens and call APIs
-- But they CANNOT decrypt Jira creds (need ENCRYPTION_KEY for that)
-- The blast radius is smaller — they can see your routes and sessions
-  through the API, but can't get your Jira access
+- But they CANNOT decrypt anything in the database
+- They can see your routes, sessions, board names through the API
+- But prompts, connect strings, Jira creds are all encrypted
 
-And if ENCRYPTION_KEY leaks:
-- Attacker can decrypt Jira creds in the database
+If ENCRYPTION_KEY leaks:
+- Attacker can decrypt data in the database
 - But they CANNOT call any API (need JWT_SECRET for tokens)
-- They'd also need the database itself
+- They'd also need the database file itself
 
-**Both would need to leak for full compromise.** Right now, only one
-needs to leak. That's the difference.
-
-### How hard is this fix?
-
-Easy. Change `crypto.py` to read from `ENCRYPTION_KEY` env var instead
-of deriving from `JWT_SECRET`. Set a new Fly.io secret. Re-encrypt
-existing Jira creds once. Done.
+**Both would need to leak for full compromise.**
 
 ---
 
@@ -168,10 +164,10 @@ Your Mac is a house. The cloud is a phone book that knows your address.
   someone gets through the door, they can only sit in one chair and push
   specific buttons. They can't wander around.
 
-- **The phone book** (database) has your address written in invisible ink
-  (encryption). Someone who steals the phone book can't read it without
-  the magic flashlight (JWT_SECRET).
+- **The phone book** (database) has your address and important notes written
+  in invisible ink (encryption). Someone who steals the phone book can't
+  read any of it without the magic flashlight (ENCRYPTION_KEY).
 
-- **Right now, the magic flashlight also unlocks a separate safe** where
-  your Jira keys are kept. That's not great — one flashlight shouldn't do
-  two things. We should have two flashlights.
+- **There are two flashlights now.** One (JWT_SECRET) lets you walk through
+  the front gate. The other (ENCRYPTION_KEY) lets you read the invisible
+  ink. Stealing one flashlight doesn't give you the other one's power.
