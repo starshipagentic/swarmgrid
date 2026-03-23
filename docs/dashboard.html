@@ -817,7 +817,7 @@
       if (urlToken) {
         document.cookie = `sg_token=${urlToken}; path=/; max-age=${72 * 3600}; SameSite=Lax; Secure`;
         window.history.replaceState({}, '', window.location.pathname);
-        return;
+        // Don't return — continue to initialize the page
       }
       if (!token) {
         window.location.href = 'login.html';
