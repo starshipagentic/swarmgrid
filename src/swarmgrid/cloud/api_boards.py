@@ -253,22 +253,26 @@ async def board_snapshot(board_id: int, user: User = Depends(get_current_user)):
                 # Build set of ticket keys with active sessions
                 active_sessions = {s.ticket_key: s.state for s in sessions if s.state in ("pending", "launching", "running")}
 
+                ticket_list = [
+                    {
+                        "key": i["key"],
+                        "summary": i.get("summary", ""),
+                        "status_name": i.get("status", ""),
+                        "assignee": i.get("assignee"),
+                        "issue_type": i.get("issue_type", ""),
+                        "agent_status": active_sessions.get(i["key"]),
+                    }
+                    for i in col_issues
+                ]
+                # Sort: tickets with active sessions first, then by key
+                ticket_list.sort(key=lambda t: (0 if t["agent_status"] else 1, t["key"]))
+
                 columns.append({
                     "name": col_name,
                     "status": col_name,
                     "count": len(col_issues),
                     "armed": route.enabled if route else False,
-                    "tickets": [
-                        {
-                            "key": i["key"],
-                            "summary": i.get("summary", ""),
-                            "status_name": i.get("status", ""),
-                            "assignee": i.get("assignee"),
-                            "issue_type": i.get("issue_type", ""),
-                            "agent_status": active_sessions.get(i["key"]),
-                        }
-                        for i in col_issues
-                    ],
+                    "tickets": ticket_list,
                 })
         else:
             for route in routes:
@@ -345,7 +349,7 @@ async def _fetch_jira_board(board: Board) -> tuple[list, list]:
             search_resp = await client.post(
                 f"{base}/rest/api/3/search/jql",
                 auth=auth,
-                json={"jql": jql, "fields": ["summary", "status", "assignee", "issuetype"], "maxResults": 50},
+                json={"jql": jql, "fields": ["summary", "status", "assignee", "issuetype"], "maxResults": 100},
             )
             if search_resp.is_success:
                 for item in search_resp.json().get("issues", []):
