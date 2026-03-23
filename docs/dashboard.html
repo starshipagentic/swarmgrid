@@ -1084,6 +1084,48 @@
               setTimeout(dismissSessionModal, 3000);
               return;
             }
+
+            // Connect failed — show the actual error with guidance
+            const errMsg = (connectData && connectData.error) || 'Unknown error';
+            const isKeyError = errMsg.includes('Permission denied (publickey)');
+            let errorHtml = `
+              <h3>Could not join ${esc(ticketKey)}</h3>
+              <div class="status-line" style="color:var(--orange)">
+                <span class="status-dot" style="width:8px;height:8px;background:var(--orange)"></span>
+                ${esc(errMsg)}
+              </div>
+            `;
+            if (isKeyError) {
+              errorHtml += `
+                <div style="padding:14px;background:var(--panel-2);border:1px solid var(--border);border-radius:8px;margin:14px 0;line-height:1.8">
+                  <div style="color:var(--text);margin-bottom:8px;font-size:13px"><strong>Your SSH key doesn't match your GitHub account.</strong></div>
+                  <div style="color:var(--muted);font-size:12px;margin-bottom:8px">
+                    The session owner's machine verified your identity via GitHub, but your local SSH key
+                    isn't registered on your GitHub account (<strong>${esc(githubUser)}</strong>).
+                  </div>
+                  <div style="color:var(--muted);font-size:12px;margin-bottom:8px">
+                    <strong style="color:var(--text)">Fix:</strong> Add your SSH key to GitHub:
+                  </div>
+                  <div style="color:var(--muted);font-size:12px;margin-bottom:4px">
+                    1. Copy your key: <code style="color:var(--green)">cat ~/.ssh/id_ed25519.pub | pbcopy</code>
+                  </div>
+                  <div style="color:var(--muted);font-size:12px;margin-bottom:4px">
+                    2. Add it at: <a href="https://github.com/settings/ssh/new" target="_blank" style="color:var(--accent);text-decoration:underline">github.com/settings/ssh/new</a>
+                  </div>
+                  <div style="color:var(--muted);font-size:12px">
+                    3. Come back and click Join again.
+                  </div>
+                </div>
+              `;
+            }
+            errorHtml += `
+              <div class="form-actions" style="justify-content:flex-end;gap:8px">
+                ${isKeyError ? '<button class="btn-save" onclick="window.open(\'https://github.com/settings/ssh/new\',\'_blank\')">Add SSH Key on GitHub</button>' : ''}
+                <button class="btn-save" style="background:var(--panel-2);color:var(--muted)" onclick="dismissSessionModal()">Close</button>
+              </div>
+            `;
+            showSessionModal(errorHtml);
+            return;
           }
         } catch(e) {
           // Fall through to manual flow
