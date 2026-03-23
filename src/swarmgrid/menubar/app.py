@@ -15,7 +15,7 @@ from pathlib import Path
 
 import rumps
 
-from ..agent.daemon import start_agent, stop_hub, agent_status, AGENT_SESSION
+from ..agent.daemon import start_agent, stop_hub, agent_status, AGENT_SESSION, PHONEBOOK_SESSION, FRONTDESK_SESSION
 from ..agent.session_manager import list_sessions, SESSION_PREFIX
 
 logger = logging.getLogger(__name__)

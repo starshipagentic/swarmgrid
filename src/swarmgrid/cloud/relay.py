@@ -112,17 +112,27 @@ def list_sessions(ssh_connect: str) -> dict:
     return send_command(ssh_connect, {"cmd": "list"})
 
 
+def phonebook_status(ssh_connect: str) -> dict:
+    """Get status from the phonebook agent."""
+    return send_command(ssh_connect, {"cmd": "status"})
+
+
+def phonebook_sessions(ssh_connect: str) -> dict:
+    """Get partial session summary from the phonebook agent."""
+    return send_command(ssh_connect, {"cmd": "sessions_summary"})
+
+
 def attach_session(ssh_connect: str, ticket_key: str = "", session_id: str = "") -> dict:
     """Tell an edge node to open a tmux session in iTerm2/Terminal.
 
-    The cloud is just a teammate — it SSHs into the edge and sends the
-    attach command. The edge worker opens iTerm2 locally.
+    Uses the phonebook agent's open_local command (limited, cloud-facing).
+    Falls back to the old 'attach' command for backwards compatibility.
     """
-    cmd: dict = {"cmd": "attach"}
-    if session_id:
-        cmd["session_id"] = session_id
-    elif ticket_key:
+    cmd: dict = {"cmd": "open_local"}
+    if ticket_key:
         cmd["ticket_key"] = ticket_key
+    elif session_id:
+        cmd["ticket_key"] = session_id  # open_local uses ticket_key
     else:
         return {"ok": False, "error": "ticket_key or session_id required"}
     return send_command(ssh_connect, cmd)

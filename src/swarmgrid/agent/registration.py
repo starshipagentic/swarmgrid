@@ -50,10 +50,12 @@ def _api_key() -> str | None:
     return None
 
 
-def register_edge(ssh_connect: str) -> dict:
+def register_edge(ssh_connect: str, frontdesk_connect: str | None = None) -> dict:
     """POST registration to the cloud API.
 
-    Body: {"ssh_connect": "ssh abc@relay", "hostname": "...", "os": "..."}
+    Body: {"ssh_connect": "ssh abc@relay", "frontdesk_connect": "ssh ...", "hostname": "...", "os": "..."}
+    ssh_connect is the phonebook agent (cloud-facing).
+    frontdesk_connect is the front desk agent (team-facing).
     Returns the parsed JSON response or an error dict.
     """
     api_key = _api_key()
@@ -63,11 +65,15 @@ def register_edge(ssh_connect: str) -> dict:
     base_url = _cloud_base_url()
     url = f"{base_url}/api/edge/register"
 
-    body = json.dumps({
+    payload: dict = {
         "ssh_connect": ssh_connect,
         "hostname": platform.node(),
         "os": platform.system(),
-    }).encode()
+    }
+    if frontdesk_connect:
+        payload["frontdesk_connect"] = frontdesk_connect
+
+    body = json.dumps(payload).encode()
 
     req = urllib.request.Request(
         url,
@@ -141,6 +147,73 @@ def fetch_authorized_keys() -> dict:
     except Exception as exc:
         logger.warning("Failed to fetch authorized_keys: %s", exc)
         return empty
+
+
+def fetch_team_config() -> dict:
+    """Fetch team configuration from the cloud.
+
+    Returns board-to-github-user mappings so the front desk agent knows
+    which github users to allow.
+
+    Returns {"boards": {"LMSV3": {"board_id": 1, "github_users": ["starshipagentic", ...]}, ...}}
+    on success, or {"boards": {}} on failure.
+
+    Caches to ~/.swarmgrid/team_config.json on success so the agent can
+    start even when the cloud is unreachable.
+    """
+    cache_path = Path.home() / ".swarmgrid" / "team_config.json"
+    empty: dict = {"boards": {}}
+
+    api_key = _api_key()
+    if not api_key:
+        logger.warning("No API key — cannot fetch team config from cloud")
+        return _load_cached_team_config(cache_path, empty)
+
+    base_url = _cloud_base_url()
+    url = f"{base_url}/api/edge/team-config"
+
+    req = urllib.request.Request(
+        url,
+        headers={
+            "Authorization": f"Bearer {api_key}",
+        },
+        method="GET",
+    )
+
+    try:
+        with urllib.request.urlopen(req, timeout=15) as resp:
+            data = json.loads(resp.read())
+            # Cache for offline starts
+            cache_path.parent.mkdir(parents=True, exist_ok=True)
+            cache_path.write_text(json.dumps(data, indent=2))
+            logger.info("Fetched team config: %d board(s)", len(data.get("boards", {})))
+            return data
+    except urllib.error.HTTPError as exc:
+        error_body = ""
+        try:
+            error_body = exc.read().decode()[:200]
+        except Exception:
+            pass
+        logger.warning("Failed to fetch team config: HTTP %s: %s", exc.code, error_body)
+        return _load_cached_team_config(cache_path, empty)
+    except urllib.error.URLError as exc:
+        logger.warning("Failed to fetch team config: connection failed: %s", exc.reason)
+        return _load_cached_team_config(cache_path, empty)
+    except Exception as exc:
+        logger.warning("Failed to fetch team config: %s", exc)
+        return _load_cached_team_config(cache_path, empty)
+
+
+def _load_cached_team_config(cache_path: Path, default: dict) -> dict:
+    """Load cached team config from disk, or return default."""
+    if cache_path.exists():
+        try:
+            data = json.loads(cache_path.read_text())
+            logger.info("Using cached team config from %s", cache_path)
+            return data
+        except Exception:
+            pass
+    return default
 
 
 def report_heartbeat(board_id: int, tickets_found: list, sessions_launched: list) -> dict:

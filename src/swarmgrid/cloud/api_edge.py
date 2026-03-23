@@ -17,7 +17,8 @@ router = APIRouter(prefix="/api/edge", tags=["edge"])
 # ── Schemas ────────────────────────────────────────────────────────────
 
 class RegisterRequest(BaseModel):
-    ssh_connect: str
+    ssh_connect: str  # phonebook agent connect string (cloud-facing)
+    frontdesk_connect: str = ""  # front desk agent connect string (team-facing)
     hostname: str = ""
     os: str = ""
 
@@ -131,6 +132,8 @@ def register_edge(body: RegisterRequest, user: User = Depends(get_current_user))
         )
         if node:
             node.ssh_connect = encrypt(body.ssh_connect)
+            if body.frontdesk_connect:
+                node.frontdesk_connect = encrypt(body.frontdesk_connect)
             node.os_name = body.os
             node.online = True
             node.last_seen_at = utc_now()
@@ -140,6 +143,7 @@ def register_edge(body: RegisterRequest, user: User = Depends(get_current_user))
                 hostname=body.hostname,
                 os_name=body.os,
                 ssh_connect=encrypt(body.ssh_connect),
+                frontdesk_connect=encrypt(body.frontdesk_connect) if body.frontdesk_connect else "",
                 online=True,
             )
             db.add(node)
@@ -275,10 +279,47 @@ def list_edge_nodes(user: User = Depends(get_current_user)):
                     "hostname": n.hostname,
                     "os": n.os_name,
                     "online": n.online,
+                    "has_frontdesk": bool(n.frontdesk_connect),
                     "last_seen_at": n.last_seen_at.isoformat() if n.last_seen_at else None,
                 }
                 for n in nodes
             ]
+        }
+    finally:
+        db.close()
+
+
+@router.get("/nodes/{node_id}/frontdesk")
+def get_frontdesk_connect(node_id: int, user: User = Depends(get_current_user)):
+    """Return a teammate's front desk connect string for SSH discovery.
+
+    The caller must be on the same team as the node owner. The front desk
+    connect string lets them SSH in as their GitHub user to discover
+    real session connect strings.
+    """
+    db = SessionLocal()
+    try:
+        node = db.query(EdgeNode).filter(EdgeNode.id == node_id).first()
+        if not node:
+            raise HTTPException(status_code=404, detail="Node not found")
+        if not node.frontdesk_connect:
+            raise HTTPException(status_code=404, detail="Node has no front desk agent")
+
+        # Verify caller is on the same team as the node owner
+        caller_team_ids = set(
+            m.team_id for m in db.query(TeamMember).filter(TeamMember.user_id == user.id).all()
+        )
+        owner_team_ids = set(
+            m.team_id for m in db.query(TeamMember).filter(TeamMember.user_id == node.owner_id).all()
+        )
+        if not caller_team_ids & owner_team_ids:
+            raise HTTPException(status_code=403, detail="Not on the same team as this node's owner")
+
+        return {
+            "ok": True,
+            "frontdesk_connect": decrypt(node.frontdesk_connect),
+            "hostname": node.hostname,
+            "owner_id": node.owner_id,
         }
     finally:
         db.close()
@@ -356,5 +397,43 @@ def get_github_users(user: User = Depends(get_current_user)):
         members = db.query(BoardMember).filter(BoardMember.board_id.in_(board_ids)).all()
         logins = sorted(set(m.github_login for m in members))
         return {"github_users": logins}
+    finally:
+        db.close()
+
+
+@router.get("/team-config")
+def get_team_config(user: User = Depends(get_current_user)):
+    """Return board→github_users mapping for the agent to cache locally.
+
+    The front desk worker uses this to check board-level access:
+    "Is karthik allowed to see LMSV3-857?" → check LMSV3 board's github_users.
+
+    Also returns the flat github_users list for the --github-user flag.
+    """
+    db = SessionLocal()
+    try:
+        team_ids = [m.team_id for m in db.query(TeamMember).filter(TeamMember.user_id == user.id).all()]
+        if not team_ids:
+            return {"boards": {}, "github_users": []}
+
+        boards_data = {}
+        all_users: set[str] = set()
+
+        boards = db.query(Board).filter(Board.team_id.in_(team_ids)).all()
+        for b in boards:
+            members = db.query(BoardMember).filter(BoardMember.board_id == b.id).all()
+            board_users = sorted(set(m.github_login for m in members))
+            # Use project_key as the board prefix (e.g., "LMSV3")
+            key = b.project_key or b.name
+            boards_data[key] = {
+                "board_id": b.id,
+                "github_users": board_users,
+            }
+            all_users.update(board_users)
+
+        return {
+            "boards": boards_data,
+            "github_users": sorted(all_users),
+        }
     finally:
         db.close()
