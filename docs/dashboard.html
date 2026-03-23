@@ -978,6 +978,45 @@
         } catch(e) {}
       }
 
+      // Step 0: Check if this user has SSH keys on GitHub
+      const githubUser = currentUser ? (currentUser.github_login || '') : '';
+      if (githubUser) {
+        try {
+          const keysResp = await fetch(`https://github.com/${githubUser}.keys`, {
+            signal: AbortSignal.timeout(3000),
+          });
+          const keysText = await keysResp.text();
+          if (!keysText.trim()) {
+            showSessionModal(`
+              <h3>SSH Key Required</h3>
+              <div class="modal-subtitle">Your GitHub account needs an SSH key to join sessions.</div>
+              <div style="padding:14px;background:var(--panel-2);border:1px solid var(--border);border-radius:8px;margin:14px 0;line-height:1.8">
+                <div style="color:var(--text);margin-bottom:8px">SwarmGrid uses your GitHub SSH key to verify your identity when connecting to teammates' sessions.</div>
+                <div style="color:var(--muted);font-size:12px;margin-bottom:12px">
+                  <strong style="color:var(--text)">Step 1:</strong> Generate a key (if you don't have one):<br>
+                  <code style="color:var(--green)">ssh-keygen -t ed25519 -C "${esc(githubUser)}@github"</code>
+                </div>
+                <div style="color:var(--muted);font-size:12px;margin-bottom:12px">
+                  <strong style="color:var(--text)">Step 2:</strong> Copy your public key:<br>
+                  <code style="color:var(--green)">cat ~/.ssh/id_ed25519.pub | pbcopy</code>
+                </div>
+                <div style="color:var(--muted);font-size:12px">
+                  <strong style="color:var(--text)">Step 3:</strong> Add it to GitHub:<br>
+                  <a href="https://github.com/settings/ssh/new" target="_blank" style="color:var(--accent);text-decoration:underline">github.com/settings/ssh/new</a> — paste your key and save.
+                </div>
+              </div>
+              <div class="form-actions" style="justify-content:flex-end;gap:8px">
+                <button class="btn-save" onclick="window.open('https://github.com/settings/ssh/new','_blank')">Add SSH Key on GitHub</button>
+                <button class="btn-save" style="background:var(--panel-2);color:var(--muted)" onclick="dismissSessionModal()">Close</button>
+              </div>
+            `);
+            return;
+          }
+        } catch(e) {
+          // Can't check keys (GitHub down, CORS, etc) — continue anyway
+        }
+      }
+
       // Show connecting indicator
       showSessionModal(`
         <h3>Joining session for ${esc(ticketKey)}</h3>
@@ -1017,8 +1056,7 @@
               </div>
             `);
 
-            const githubUser = currentUser ? (currentUser.github_login || '') : '';
-            // NOTE: localhost:19222 must set Access-Control-Allow-Origin: * for this to work
+            // NOTE: 127.0.0.1:19222 must set Access-Control-Allow-Origin: * for this to work
             const connectResp = await fetch('http://127.0.0.1:19222/connect', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
