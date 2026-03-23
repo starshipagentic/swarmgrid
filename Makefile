@@ -55,8 +55,11 @@ logs:
 	tmux attach -t swarmgrid-agent-bg
 
 # Deploy to Fly.io
-deploy:
+deploy: check-dashboard
 	~/.fly/bin/flyctl deploy --app swarmgrid-api
+
+check-dashboard:
+	@bash tests/test_dashboard_syntax.sh
 
 # Build menu bar app
 build-app:
