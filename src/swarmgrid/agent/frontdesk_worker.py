@@ -86,7 +86,7 @@ def _extract_ticket_key(session_id: str) -> str | None:
     for i in range(len(parts) - 1, -1, -1):
         segment = parts[i]
         # Timestamp segments are long digit strings (possibly with t/z)
-        if not found_ticket and len(segment) >= 10 and all(c in "0123456789tz" for c in segment):
+        if not found_ticket and len(segment) >= 10 and all(c in "0123456789tzTZ" for c in segment):
             continue  # skip timestamp slug
         else:
             found_ticket = True
