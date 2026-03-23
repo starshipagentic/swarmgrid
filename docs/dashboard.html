@@ -991,7 +991,7 @@
       // Step 1: Check if local agent is running
       let localAgentAvailable = false;
       try {
-        const healthResp = await fetch('http://localhost:19222/health', {
+        const healthResp = await fetch('http://127.0.0.1:19222/health', {
           signal: AbortSignal.timeout(2000),
         });
         const healthData = await healthResp.json();
@@ -1019,7 +1019,7 @@
 
             const githubUser = currentUser ? (currentUser.github_login || '') : '';
             // NOTE: localhost:19222 must set Access-Control-Allow-Origin: * for this to work
-            const connectResp = await fetch('http://localhost:19222/connect', {
+            const connectResp = await fetch('http://127.0.0.1:19222/connect', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({
