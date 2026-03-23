@@ -66,19 +66,34 @@ class MemberAdd(BaseModel):
 # ── Helpers ────────────────────────────────────────────────────────────
 
 def _require_board_access(board_id: int, user: User) -> Board:
+    """Check if user can access a board.
+
+    Access granted if:
+    1. User is on the board's team (TeamMember), OR
+    2. User's github_login is in board_members (BoardMember)
+    """
     db = SessionLocal()
     try:
         board = db.query(Board).filter(Board.id == board_id).first()
         if not board:
             raise HTTPException(status_code=404, detail="Board not found")
-        member = (
+        # Check team membership
+        team_member = (
             db.query(TeamMember)
             .filter(TeamMember.team_id == board.team_id, TeamMember.user_id == user.id)
             .first()
         )
-        if not member:
-            raise HTTPException(status_code=403, detail="Not a member of this board's team")
-        return board
+        if team_member:
+            return board
+        # Check board membership by github_login
+        board_member = (
+            db.query(BoardMember)
+            .filter(BoardMember.board_id == board_id, BoardMember.github_login == user.github_login)
+            .first()
+        )
+        if board_member:
+            return board
+        raise HTTPException(status_code=403, detail="Not a member of this board")
     finally:
         db.close()
 
@@ -115,11 +130,31 @@ def _board_to_dict(b: Board) -> dict:
 
 @router.get("")
 def list_boards(user: User = Depends(get_current_user)):
+    """List all boards the user has access to.
+
+    Access via team membership OR board membership (added by GitHub username).
+    """
     db = SessionLocal()
     try:
+        # Boards via team membership
         team_ids = [m.team_id for m in db.query(TeamMember).filter(TeamMember.user_id == user.id).all()]
-        boards = db.query(Board).filter(Board.team_id.in_(team_ids)).all() if team_ids else []
-        return {"boards": [_board_to_dict(b) for b in boards]}
+        team_boards = db.query(Board).filter(Board.team_id.in_(team_ids)).all() if team_ids else []
+
+        # Boards via board_members (added by GitHub username)
+        member_board_ids = [
+            m.board_id for m in db.query(BoardMember).filter(BoardMember.github_login == user.github_login).all()
+        ]
+        member_boards = db.query(Board).filter(Board.id.in_(member_board_ids)).all() if member_board_ids else []
+
+        # Merge and dedupe
+        seen = set()
+        all_boards = []
+        for b in team_boards + member_boards:
+            if b.id not in seen:
+                seen.add(b.id)
+                all_boards.append(b)
+
+        return {"boards": [_board_to_dict(b) for b in all_boards]}
     finally:
         db.close()
 
@@ -167,6 +202,9 @@ def create_board(body: BoardCreate, user: User = Depends(get_current_user)):
             created_by=user.id,
         )
         db.add(board)
+        db.flush()
+        # Auto-add creator as board member
+        db.add(BoardMember(board_id=board.id, github_login=user.github_login, added_by=user.id))
         db.commit()
         db.refresh(board)
         return {"ok": True, "board": _board_to_dict(board)}
