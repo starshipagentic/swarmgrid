@@ -2,9 +2,11 @@
 
 Reuses patterns from runner.py — launching Claude in tmux sessions,
 capturing output, checking session state, and terminating sessions.
+Includes per-ticket upterm sharing with board-scoped --github-user.
 """
 from __future__ import annotations
 
+import json
 import logging
 import os
 import re
@@ -18,8 +20,12 @@ from pathlib import Path
 logger = logging.getLogger(__name__)
 
 SESSION_PREFIX = "swarmgrid-"
+UPTERM_PREFIX = "upterm-"
 DEFAULT_WIDTH = 185
 DEFAULT_HEIGHT = 55
+UPTERM_SERVER = "ssh://uptermd.upterm.dev:22"
+TEAM_CONFIG_PATH = Path.home() / ".swarmgrid" / "team_config.json"
+SESSION_SHARES_DIR = Path.home() / ".swarmgrid" / "session_shares"
 
 
 def timestamp() -> str:
@@ -39,6 +45,8 @@ def launch_session(
     working_dir: str | None = None,
     claude_command: str = "claude",
     session_config: dict | None = None,
+    share_upterm: bool = True,
+    github_users: list[str] | None = None,
 ) -> dict:
     """Spawn Claude in a new tmux session for the given ticket.
 
@@ -95,7 +103,7 @@ def launch_session(
 
     pid = _tmux_pane_pid(name)
 
-    return {
+    result = {
         "ok": True,
         "session_id": name,
         "ticket_key": ticket_key,
@@ -103,6 +111,24 @@ def launch_session(
         "pid": pid,
         "created_at": timestamp(),
     }
+
+    # Start upterm share for pair programming
+    if share_upterm and shutil.which("upterm") is not None:
+        users = github_users or _github_users_for_ticket(ticket_key)
+        if users:
+            try:
+                share_info = _start_upterm_share(ticket_key, name, users)
+                result["upterm_shared"] = True
+                result["ssh_connect"] = share_info["ssh_connect"]
+            except RuntimeError as exc:
+                logger.warning("Upterm share failed for %s: %s", ticket_key, exc)
+                result["upterm_shared"] = False
+                result["upterm_error"] = str(exc)
+        else:
+            logger.info("No github_users configured for %s — skipping upterm share", ticket_key)
+            result["upterm_shared"] = False
+
+    return result
 
 
 def session_status(session_id: str) -> dict:
@@ -141,9 +167,14 @@ def capture_output(session_id: str, lines: int = 80) -> dict:
 
 
 def kill_session(session_id: str) -> dict:
-    """Terminate a tmux session."""
+    """Terminate a tmux session and its upterm share."""
     if not _tmux_session_exists(session_id):
         return {"ok": True, "session_id": session_id, "state": "not_found"}
+
+    # Extract ticket_key from session_id to clean up upterm
+    ticket_key = _extract_ticket_key(session_id)
+    if ticket_key:
+        _cleanup_upterm_share(ticket_key)
 
     subprocess.run(
         ["tmux", "kill-session", "-t", session_id],
@@ -178,6 +209,227 @@ def list_sessions() -> dict:
                 "pid": pid,
             })
     return {"ok": True, "sessions": sessions}
+
+
+def get_session_share(ticket_key: str) -> dict | None:
+    """Read the persisted upterm share info for a ticket.
+
+    Returns a dict with ssh_connect, github_users, session_id, etc.
+    or None if no share file exists.
+    """
+    share_file = SESSION_SHARES_DIR / f"{ticket_key.upper()}.json"
+    try:
+        data = json.loads(share_file.read_text(encoding="utf-8"))
+        return data
+    except (FileNotFoundError, json.JSONDecodeError):
+        return None
+
+
+# -- Upterm sharing helpers --
+
+def _board_prefix(ticket_key: str) -> str:
+    """Extract the board prefix from a ticket key.
+
+    "LMSV3-857" -> "LMSV3"
+    "ACME-42"   -> "ACME"
+    """
+    parts = ticket_key.split("-")
+    if len(parts) >= 2 and parts[-1].isdigit():
+        return "-".join(parts[:-1]).upper()
+    return ticket_key.upper()
+
+
+def _load_team_config() -> dict:
+    """Load the team config written by the daemon during heartbeat."""
+    try:
+        return json.loads(TEAM_CONFIG_PATH.read_text(encoding="utf-8"))
+    except (FileNotFoundError, json.JSONDecodeError):
+        return {}
+
+
+def _github_users_for_ticket(ticket_key: str) -> list[str]:
+    """Look up github_users for the board that owns a ticket."""
+    config = _load_team_config()
+    boards = config.get("boards", {})
+    prefix = _board_prefix(ticket_key)
+    board = boards.get(prefix, {})
+    return board.get("github_users", [])
+
+
+def _start_upterm_share(
+    ticket_key: str,
+    tmux_session: str,
+    github_users: list[str],
+) -> dict:
+    """Start an upterm share for a tmux session.
+
+    Follows the same pattern as upterm.py _start_share():
+    - Runs upterm host inside a wrapper tmux session
+    - Parses the SSH connect string from the log
+    - Saves share info to a JSON file
+
+    Returns dict with ssh_connect, session_id, github_users.
+    Raises RuntimeError on failure.
+    """
+    wrapper_name = f"{UPTERM_PREFIX}{ticket_key.lower()}"
+
+    # Kill existing wrapper session if any
+    subprocess.run(
+        ["tmux", "kill-session", "-t", wrapper_name],
+        check=False,
+        capture_output=True,
+    )
+
+    # Build upterm command
+    cmd_parts = [
+        "upterm", "host",
+        "--accept",
+        "--skip-host-key-check",
+        "--server", UPTERM_SERVER,
+    ]
+    for user in github_users:
+        cmd_parts.extend(["--github-user", user])
+    cmd_parts.extend(["--", "tmux", "attach-session", "-t", tmux_session])
+
+    log_file = f"/tmp/upterm-{ticket_key.lower()}.log"
+    shell_cmd = shlex.join(cmd_parts) + f" 2>&1 | tee {log_file}; sleep 999"
+
+    # Launch upterm inside a tmux session (needs a TTY)
+    try:
+        subprocess.run(
+            [
+                "tmux", "new-session", "-d",
+                "-s", wrapper_name,
+                "-x", "180", "-y", "50",
+                shell_cmd,
+            ],
+            check=True,
+            capture_output=True,
+        )
+    except subprocess.CalledProcessError as exc:
+        raise RuntimeError(
+            f"Failed to create upterm wrapper session: {exc.stderr.decode()[:200]}"
+        )
+
+    # Wait for upterm to establish the tunnel and write its log
+    session_id = None
+    ssh_connect = None
+    for _ in range(20):  # up to 10 seconds
+        time.sleep(0.5)
+        try:
+            with open(log_file) as f:
+                content = f.read()
+            # Parse session ID from output
+            match = re.search(r"Session:\s+(\S+)", content)
+            if match:
+                session_id = match.group(1)
+            # Parse SSH connect string (capture full line including -p PORT)
+            ssh_match = re.search(r"ssh\s+(\S+@\S+(?:\s+-p\s+\d+)?)", content)
+            if ssh_match:
+                ssh_connect = f"ssh {ssh_match.group(1)}"
+            if session_id and ssh_connect:
+                break
+        except FileNotFoundError:
+            continue
+
+    if not session_id or not ssh_connect:
+        # Clean up on failure
+        subprocess.run(
+            ["tmux", "kill-session", "-t", wrapper_name],
+            check=False,
+            capture_output=True,
+        )
+        log_content = ""
+        try:
+            with open(log_file) as f:
+                log_content = f.read()
+        except FileNotFoundError:
+            pass
+        raise RuntimeError(f"Upterm failed to start. Log: {log_content[:500]}")
+
+    share_info = {
+        "ssh_connect": ssh_connect,
+        "session_id": session_id,
+        "github_users": github_users,
+        "ticket_key": ticket_key.upper(),
+        "tmux_session": tmux_session,
+        "wrapper_session": wrapper_name,
+        "created_at": timestamp(),
+    }
+
+    _save_session_share(ticket_key, share_info)
+    logger.info("Started upterm share for %s: %s", ticket_key, ssh_connect)
+    return share_info
+
+
+def _save_session_share(ticket_key: str, share_info: dict) -> None:
+    """Persist share info to ~/.swarmgrid/session_shares/{TICKET_KEY}.json."""
+    SESSION_SHARES_DIR.mkdir(parents=True, exist_ok=True)
+    share_file = SESSION_SHARES_DIR / f"{ticket_key.upper()}.json"
+    share_file.write_text(
+        json.dumps(share_info, indent=2),
+        encoding="utf-8",
+    )
+
+
+def _cleanup_upterm_share(ticket_key: str) -> None:
+    """Kill the upterm wrapper session and remove the share file."""
+    wrapper_name = f"{UPTERM_PREFIX}{ticket_key.lower()}"
+
+    # Kill upterm wrapper tmux session
+    subprocess.run(
+        ["tmux", "kill-session", "-t", wrapper_name],
+        check=False,
+        capture_output=True,
+    )
+
+    # Remove share file
+    share_file = SESSION_SHARES_DIR / f"{ticket_key.upper()}.json"
+    try:
+        share_file.unlink(missing_ok=True)
+    except OSError:
+        pass
+
+    # Remove upterm log file
+    log_file = Path(f"/tmp/upterm-{ticket_key.lower()}.log")
+    try:
+        log_file.unlink(missing_ok=True)
+    except OSError:
+        pass
+
+    logger.info("Cleaned up upterm share for %s", ticket_key)
+
+
+def _extract_ticket_key(session_id: str) -> str | None:
+    """Extract the ticket key from a swarmgrid session name.
+
+    Session names follow: "swarmgrid-{ticket_key_lower}-{timestamp_slug}"
+    The timestamp slug is a run of digits (and possibly 't'/'z' chars).
+
+    Examples:
+        "swarmgrid-lmsv3-857-20260322t140000000z" -> "lmsv3-857"
+        "swarmgrid-acme-42-20260322t140000000z"    -> "acme-42"
+    """
+    if not session_id.startswith(SESSION_PREFIX):
+        return None
+    remainder = session_id[len(SESSION_PREFIX):]
+    segments = remainder.split("-")
+
+    # Walk from the right. The timestamp slug is a long run of digits/letters
+    # at the end (e.g. "20260322t140000000z"). Everything before that is the
+    # ticket key.
+    ticket_parts: list[str] = []
+    found_ticket = False
+    for segment in reversed(segments):
+        if not found_ticket and re.fullmatch(r"[0-9tz]+", segment, re.IGNORECASE) and len(segment) > 6:
+            continue  # skip timestamp slug
+        else:
+            found_ticket = True
+            ticket_parts.insert(0, segment)
+
+    if not ticket_parts:
+        return None
+    return "-".join(ticket_parts)
 
 
 # -- Internal helpers (reused from runner.py patterns) --

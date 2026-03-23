@@ -151,7 +151,7 @@ def handle_list_sessions(payload: dict) -> dict:
 
 def handle_get_session_connect(payload: dict) -> dict:
     """Return the real upterm SSH connect string for a ticket's session."""
-    from .session_manager import list_sessions
+    from .session_manager import list_sessions, get_session_share
 
     github_user = payload.get("github_user", "")
     ticket_key = payload.get("ticket_key", "")
@@ -177,8 +177,10 @@ def handle_get_session_connect(payload: dict) -> dict:
     if not match:
         return {"ok": False, "error": f"no active session found for {ticket_key}"}
 
-    # Parse the upterm connect string from the log
-    ssh_connect = _parse_upterm_connect_string(ticket_key)
+    # Try the persisted share file first (written by session_manager),
+    # fall back to parsing the upterm log directly
+    share = get_session_share(ticket_key)
+    ssh_connect = share["ssh_connect"] if share else _parse_upterm_connect_string(ticket_key)
     if not ssh_connect:
         return {"ok": False, "error": "session not shared via upterm"}
 
@@ -234,7 +236,7 @@ def handle_attach(payload: dict) -> dict:
 
 def handle_status(payload: dict) -> dict:
     """Full status for boards the caller has access to."""
-    from .session_manager import list_sessions
+    from .session_manager import list_sessions, get_session_share
 
     github_user = payload.get("github_user", "")
     if not github_user:
@@ -264,7 +266,8 @@ def handle_status(payload: dict) -> dict:
             continue
         board = _board_prefix(ticket_key)
         if board in accessible_boards:
-            ssh_connect = _parse_upterm_connect_string(ticket_key)
+            share = get_session_share(ticket_key)
+            ssh_connect = share["ssh_connect"] if share else _parse_upterm_connect_string(ticket_key)
             sessions.append({
                 "session_id": session_id,
                 "state": sess.get("state", "unknown"),

@@ -129,6 +129,27 @@ def build_parser() -> argparse.ArgumentParser:
         help="Restrict SSH access to these GitHub users (repeatable).",
     )
 
+    connect_parser = subparsers.add_parser(
+        "connect",
+        help="Connect to a teammate's session via front desk SSH.",
+    )
+    connect_parser.add_argument(
+        "--ticket",
+        required=True,
+        help="Ticket key to connect to (e.g. LMSV3-857).",
+    )
+    connect_parser.add_argument(
+        "--frontdesk",
+        default=None,
+        help="Front desk SSH connect string (auto-discovered from cloud if omitted).",
+    )
+    connect_parser.add_argument(
+        "--github-user",
+        dest="connect_github_user",
+        default=None,
+        help="Your GitHub username (reads from ~/.swarmgrid/config.yaml if omitted).",
+    )
+
     return parser
 
 
@@ -143,6 +164,21 @@ def _collect_config_paths(args: argparse.Namespace) -> list[str]:
             if resolved not in paths:
                 paths.append(resolved)
     return paths
+
+
+def _load_config_field(field: str) -> str | None:
+    """Read a single field from ~/.swarmgrid/config.yaml."""
+    config_path = Path.home() / ".swarmgrid" / "config.yaml"
+    if not config_path.exists():
+        return None
+    try:
+        import yaml
+        data = yaml.safe_load(config_path.read_text())
+        if data:
+            return data.get(field)
+    except Exception:
+        pass
+    return None
 
 
 def _resolve_config(config_arg: str) -> str:
@@ -385,6 +421,50 @@ def main(argv: list[str] | None = None) -> int:
             foreground=True,
         )
         print(json.dumps(result, indent=2))
+        return 0
+
+    if args.command == "connect":
+        from .agent.connector import get_session_connect, open_iterm2_ssh, discover_frontdesk
+
+        # Resolve github_user: CLI flag > config.yaml > error
+        github_user = args.connect_github_user
+        if not github_user:
+            github_user = _load_config_field("github_user")
+        if not github_user:
+            print("Error: --github-user required (or set github_user in ~/.swarmgrid/config.yaml)")
+            return 1
+
+        ticket_key = args.ticket
+
+        # Resolve front desk connect string: CLI flag > auto-discover from cloud
+        frontdesk_connect = args.frontdesk
+        if not frontdesk_connect:
+            print(f"Discovering front desk for {ticket_key}...")
+            discovery = discover_frontdesk(ticket_key)
+            if not discovery.get("ok"):
+                print(f"Error: {discovery.get('error', 'unknown error')}")
+                return 1
+            frontdesk_connect = discovery["frontdesk_connect"]
+            print(f"Found front desk on {discovery.get('hostname', 'unknown')}")
+
+        # Query front desk for the real session connect string
+        print(f"Querying front desk for {ticket_key} session...")
+        result = get_session_connect(frontdesk_connect, github_user, ticket_key)
+        if not result.get("ok"):
+            print(f"Error: {result.get('error', 'unknown error')}")
+            return 1
+
+        ssh_connect = result["ssh_connect"]
+        session_id = result.get("session_id", "")
+        print(f"Session found: {session_id}")
+        print(f"Opening iTerm2 with: {ssh_connect}")
+
+        # Open iTerm2 with the SSH session
+        if open_iterm2_ssh(ssh_connect):
+            print("Done. iTerm2 window opened.")
+        else:
+            print(f"Could not open iTerm2 automatically.")
+            print(f"Run manually: {ssh_connect}")
         return 0
 
     if args.command == "menubar":

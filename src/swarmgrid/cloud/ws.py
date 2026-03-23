@@ -103,6 +103,7 @@ def _build_board_snapshot(board_id: int) -> dict:
                     "ticket_key": s.ticket_key,
                     "ticket_summary": s.ticket_summary,
                     "state": s.state,
+                    "edge_node_id": s.edge_node_id,
                     "launched_at": s.launched_at.isoformat() if s.launched_at else None,
                     "completed_at": s.completed_at.isoformat() if s.completed_at else None,
                 }

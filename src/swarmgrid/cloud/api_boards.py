@@ -287,6 +287,7 @@ async def board_snapshot(board_id: int, user: User = Depends(get_current_user)):
                     "session_id": s.session_id,
                     "ticket_key": s.ticket_key,
                     "state": s.state,
+                    "edge_node_id": s.edge_node_id,
                     "launched_at": s.launched_at.isoformat() if s.launched_at else None,
                     "completed_at": s.completed_at.isoformat() if s.completed_at else None,
                 }

@@ -32,10 +32,14 @@ def handle_launch(payload: dict) -> dict:
         return {"ok": False, "error": "ticket_key and prompt are required"}
 
     session_config = payload.get("session_config") or {}
+    share_upterm = payload.get("share_upterm", True)
+    github_users = payload.get("github_users")
     return launch_session(
         ticket_key,
         prompt,
         session_config=session_config,
+        share_upterm=share_upterm,
+        github_users=github_users,
     )
 
 

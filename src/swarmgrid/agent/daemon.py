@@ -1,9 +1,10 @@
 """Edge agent daemon — the main process running on the user's machine.
 
-Starts TWO upterm sessions:
+Starts TWO upterm sessions + a local HTTP server:
 
 1. Phonebook agent (cloud-facing): --authorized-keys, force-command -> phonebook_worker.py
 2. Front desk agent (team-facing): --github-user for teammates, force-command -> frontdesk_worker.py
+3. Local HTTP server on localhost:19222 — bridge between the web dashboard and SSH world
 
 Lifecycle:
 1. Fetch authorized_keys (cloud key) and team config (github users)
@@ -11,12 +12,15 @@ Lifecycle:
 3. Start front desk upterm (team-facing, github_users only)
 4. Parse both SSH connect strings
 5. Register both connect strings with the cloud
-6. Start the heartbeat loop in a background thread
-7. Monitor both sessions — re-register if tokens rotate
-8. On shutdown, notify the cloud and clean up
+6. Start the local HTTP server (localhost:19222)
+7. Start the heartbeat loop in a background thread
+8. Monitor both sessions — re-register if tokens rotate
+9. On shutdown, notify the cloud and clean up
 """
 from __future__ import annotations
 
+import http.server
+import json
 import logging
 import os
 import re
@@ -42,6 +46,122 @@ AGENT_SESSION = PHONEBOOK_SESSION  # backwards compat alias
 PHONEBOOK_LOG = "/tmp/swarmgrid-phonebook-upterm.log"
 FRONTDESK_LOG = "/tmp/swarmgrid-frontdesk-upterm.log"
 LOG_FILE = PHONEBOOK_LOG  # backwards compat alias
+
+LOCAL_HTTP_HOST = "127.0.0.1"
+LOCAL_HTTP_PORT = 19222
+
+
+class _ConnectHandler(http.server.BaseHTTPRequestHandler):
+    """Minimal HTTP handler for the local agent bridge server.
+
+    Endpoints:
+        GET  /health  — returns {"ok": true}
+        POST /connect — accepts {"frontdesk_connect": "ssh ...", "ticket_key": "...", "github_user": "..."}
+                        Queries the front desk, opens iTerm2, returns {"ok": true, "opened": "TICKET"} or error.
+    """
+
+    def log_message(self, format, *args):  # noqa: A002
+        logger.debug("HTTP %s", format % args)
+
+    def _send_json(self, data: dict, status: int = 200) -> None:
+        body = json.dumps(data).encode()
+        self.send_response(status)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(body)))
+        self.send_header("Access-Control-Allow-Origin", "*")
+        self.end_headers()
+        self.wfile.write(body)
+
+    def do_OPTIONS(self):  # noqa: N802
+        """Handle CORS preflight requests from browser dashboards."""
+        self.send_response(204)
+        self.send_header("Access-Control-Allow-Origin", "*")
+        self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+        self.send_header("Access-Control-Allow-Headers", "Content-Type")
+        self.end_headers()
+
+    def do_GET(self):  # noqa: N802
+        if self.path == "/health":
+            self._send_json({"ok": True})
+        else:
+            self._send_json({"ok": False, "error": "not found"}, status=404)
+
+    def do_POST(self):  # noqa: N802
+        if self.path != "/connect":
+            self._send_json({"ok": False, "error": "not found"}, status=404)
+            return
+
+        # Read request body
+        content_length = int(self.headers.get("Content-Length", 0))
+        if content_length == 0:
+            self._send_json({"ok": False, "error": "empty body"}, status=400)
+            return
+
+        try:
+            body = json.loads(self.rfile.read(content_length))
+        except json.JSONDecodeError as exc:
+            self._send_json({"ok": False, "error": f"invalid JSON: {exc}"}, status=400)
+            return
+
+        frontdesk_connect = body.get("frontdesk_connect", "")
+        ticket_key = body.get("ticket_key", "")
+        github_user = body.get("github_user", "")
+
+        if not ticket_key:
+            self._send_json({"ok": False, "error": "ticket_key required"}, status=400)
+            return
+        if not github_user:
+            self._send_json({"ok": False, "error": "github_user required"}, status=400)
+            return
+
+        from .connector import get_session_connect, open_iterm2_ssh, discover_frontdesk
+
+        # Auto-discover front desk if not provided
+        if not frontdesk_connect:
+            discovery = discover_frontdesk(ticket_key)
+            if not discovery.get("ok"):
+                self._send_json({"ok": False, "error": discovery.get("error", "discovery failed")})
+                return
+            frontdesk_connect = discovery["frontdesk_connect"]
+
+        # Query the front desk for the real session connect string
+        result = get_session_connect(frontdesk_connect, github_user, ticket_key)
+        if not result.get("ok"):
+            self._send_json({"ok": False, "error": result.get("error", "query failed")})
+            return
+
+        ssh_connect = result["ssh_connect"]
+
+        # Open iTerm2 with the SSH session
+        opened = open_iterm2_ssh(ssh_connect)
+        if opened:
+            self._send_json({"ok": True, "opened": ticket_key})
+        else:
+            self._send_json({
+                "ok": False,
+                "error": "Failed to open iTerm2",
+                "ssh_connect": ssh_connect,
+                "hint": f"Run manually: {ssh_connect}",
+            })
+
+
+def _start_local_http_server(stop_event: threading.Event) -> None:
+    """Start the local HTTP server on localhost:19222 in the current thread.
+
+    Runs until stop_event is set. Used as a daemon thread target.
+    """
+    server = http.server.HTTPServer(
+        (LOCAL_HTTP_HOST, LOCAL_HTTP_PORT),
+        _ConnectHandler,
+    )
+    server.timeout = 1.0  # so we can check stop_event periodically
+    logger.info("Local HTTP server listening on %s:%d", LOCAL_HTTP_HOST, LOCAL_HTTP_PORT)
+
+    while not stop_event.is_set():
+        server.handle_request()
+
+    server.server_close()
+    logger.info("Local HTTP server stopped")
 
 
 def start_agent(
@@ -216,6 +336,14 @@ def start_agent(
         daemon=True,
     )
     heartbeat_thread.start()
+
+    # Start local HTTP server for dashboard bridge
+    http_thread = threading.Thread(
+        target=_start_local_http_server,
+        args=(stop_event,),
+        daemon=True,
+    )
+    http_thread.start()
 
     # Monitor loop: check both sessions alive, re-register on token rotation
     last_phonebook = phonebook_connect
