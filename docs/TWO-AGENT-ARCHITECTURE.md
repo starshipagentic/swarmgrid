@@ -208,3 +208,104 @@ The two agents enforce this by using completely different auth mechanisms:
 
 These two mechanisms are mutually exclusive in upterm. One agent cannot
 accidentally become the other.
+
+---
+
+## Auth Clarification: OAuth vs SSH Keys
+
+Two completely separate identity systems are in play:
+
+**GitHub OAuth (web login):**
+- Used when you click "Login with GitHub" on swarmgrid.org
+- GitHub asks "authorize SwarmGrid?" → you click yes
+- SwarmGrid gets your github_login, creates a JWT
+- This is how you log into the dashboard. Nothing to do with SSH.
+
+**GitHub SSH keys (upterm connections):**
+- Used when someone SSHs into an upterm session with `--github-user`
+- Upterm checks `github.com/{username}.keys` for matching public keys
+- The user must have uploaded an SSH public key to their GitHub account
+  (GitHub → Settings → SSH and GPG keys → New SSH key)
+- This is how teammates connect to the front desk and real sessions
+
+**You can have one without the other:**
+- A user can log into swarmgrid.org (OAuth) without SSH keys on GitHub
+- A user can SSH into upterm sessions (SSH keys) without a SwarmGrid account
+- For the full dashboard-click-to-pair-program flow, you need both
+
+**The board owner (starshipagentic) uses the phonebook path for dashboard
+actions (open iTerm2, refresh config) — this goes through authorized-keys,
+not GitHub SSH. So the owner doesn't need SSH keys on GitHub for basic
+dashboard functionality.**
+
+---
+
+## Flow 5: Teammate Pair Programs via Dashboard Click (NOT YET BUILT)
+
+This is the end-to-end flow where tsomerville2 clicks a session on
+swarmgrid.org and gets pair-programmed into the tmux session on
+starshipagentic's Mac.
+
+### Prerequisites
+- tsomerville2 has a GitHub account with an SSH key uploaded
+- tsomerville2 is added to the LMSV3 board on swarmgrid.org
+- tsomerville2 has swarmgrid agent running on their own Mac
+- starshipagentic has LMSV3-857 running in a tmux session with
+  its own upterm share (--github-user tsomerville2)
+
+### The Click Flow
+
+1. tsomerville2 logs into swarmgrid.org with GitHub OAuth
+2. Dashboard shows LMSV3 board (tsomerville2 is a board member)
+3. LMSV3-857 shows a "running" session indicator on starshipagentic's node
+4. tsomerville2 clicks "Join session" on LMSV3-857
+5. Dashboard calls cloud API: POST /api/edge/join-session
+   Body: {ticket_key: "LMSV3-857", target_node_id: 1}
+6. Cloud returns starshipagentic's front desk connect string
+   (decrypted from DB, returned to tsomerville2's browser)
+7. Dashboard tells tsomerville2's LOCAL agent to connect:
+   POST http://localhost:{agent_port}/connect
+   Body: {frontdesk_connect: "ssh TOKEN@uptermd.upterm.dev",
+          ticket_key: "LMSV3-857",
+          github_user: "tsomerville2"}
+8. tsomerville2's agent SSHs into starshipagentic's front desk
+9. Front desk verifies: tsomerville2 on LMSV3? Yes.
+   Returns real session connect string.
+10. tsomerville2's agent SSHs into the real session
+11. iTerm2 pops open on tsomerville2's Mac, attached to LMSV3-857
+
+### What needs to be built
+
+**A. Local agent HTTP endpoint** (`/connect` or similar)
+   - The dashboard needs to talk to the LOCAL agent (not the cloud)
+   - Agent runs a small HTTP server on localhost (e.g., port 19222)
+   - Receives: frontdesk connect string + ticket key + github user
+   - Executes: SSH into front desk → get session connect → SSH into session → open iTerm2
+   - This is the `swarmgrid connect` command wrapped in an HTTP endpoint
+
+**B. CLI command: `swarmgrid connect`**
+   - `swarmgrid connect --frontdesk "ssh TOKEN@uptermd.upterm.dev" --ticket LMSV3-857`
+   - SSHs into the front desk (using the user's own SSH key / GitHub identity)
+   - Sends get_session_connect command
+   - Gets the real session connect string
+   - Opens iTerm2 with: tmux attach via SSH to the real session
+   - This is the CLI version of what the dashboard click does
+
+**C. Dashboard UI changes**
+   - Board view: session indicators show which node has the session
+   - Click on a session-active ticket → "Join session" button
+   - Join button calls localhost agent endpoint (not cloud relay)
+   - Fallback: if local agent not running, show the CLI command to copy/paste
+
+**D. Per-ticket upterm sharing**
+   - When heartbeat launches a Claude session in tmux, also start an upterm
+     share for that tmux session with --github-user scoped to that board's team
+   - This creates the connect string that the front desk hands out
+   - Currently sessions are tmux-only (no upterm share per session)
+
+### Without building anything new, tsomerville2 can already:
+   - `ssh TOKEN@uptermd.upterm.dev` → reaches the front desk
+   - Send `{"cmd": "get_session_connect", "ticket_key": "LMSV3-857", "github_user": "tsomerville2"}`
+   - Get the real session connect string back
+   - SSH into the real session
+   - This is the CLI-only path — works today, just not pretty
